@@ -1,7 +1,7 @@
 # Repository Guidelines
 
 ## Project Structure & Module Organization
-- Store the source chapter `Chapter5.md` at the project root; keep the original untouched for citation checks.
+- Store the source chapter `Chapter*.md` at the project root; keep the original untouched for citation checks.
 - Draft slide source files under `slides/` as numbered Markdown (`01_intro.md`, `02_encoding.md`) aligned with the lesson agenda.
 - Capture bilingual speaking notes in `notes/` (`note-encoding-zh.md`) and map each to its slide filename for fast rehearsal.
 - Keep supporting graphics and Mermaid specs in `assets/` and `diagrams/`; export presenter-ready images into `slides/img/`.
@@ -16,7 +16,7 @@
 ## Output Packaging Checklist
 - Ensure `slides/` holds all session chunks (<=10 pages each) and that matching `notes/` files provide Traditional Chinese talking points with preserved English terms.
 - Save diagram sources in `diagrams/` and export any required SVG or PNG copies into `assets/` or `slides/img/` prior to delivery.
-- Refresh the interactive guide: rebuild `指引.html`為「每段落列出開啟連結 + 可複製的 textarea（Slide、講稿、合併）」並同步更新 `指引.md` 提示。
+- Refresh the interactive guide: rebuild `指引.html` (segment list with open links and copyable textareas) and update the pointer note in `指引.md`.
 - Bundle the Markdown, notes, diagrams, and guidance files together when handing off so classmates can study directly from the package.
 
 ## Content Coverage & Storycraft
