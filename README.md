@@ -1,6 +1,6 @@
 # PPTPlaner
 
-PPTPlaner 是一個「原文書共讀 + AI 簡報製作」的工作範本。透過 Codex CLI 讀取章節 Markdown（例如 `Chapter01.md`、`Chapter07.md`），就能自動產出簡報檔、講稿、Mermaid 圖表與操作指引，協助學員在有限時間內掌握重點，同時保留原作的學習深度。
+PPTPlaner 是一個「原文書共讀 + AI 簡報製作」的工作範本。透過 Codex CLI 讀取章節 Markdown（例如 `Chapter01.md`、`Chapter07.md`，參考可以使用: [Docling](https://github.com/docling-project/docling) 來將 PDF 轉換成 Markdown 的 .md 格式，或透過我設計的 GPT: [AnyIMG_to_Markdown](https://chatgpt.com/g/g-68e122adb2508191ad323ad85385d7f3-anyimg-to-markdown) 將 PDF 轉換成 jpg 等圖檔以後，陸續丟給該 GPT 就會去閱讀理解原文與結構來產出 markdown 的 .md），就能自動產出簡報檔、講稿、Mermaid 圖表與操作指引，協助學員在有限時間內掌握重點，同時保留原作的學習深度。
 
 ## 功能亮點
 - **AI 驅動的簡報**：依章節內容拆分成 `slides/*.md`，每段遵循「Less is More」原則，保留理論、實驗與故事脈絡。
@@ -35,7 +35,7 @@ PPTPlaner/
    ```
 4. macOS / Linux 使用者可改用 [nvm](https://github.com/nvm-sh/nvm) 或直接安裝 Node.js 官方套件。
 
-### 安裝與登入 Codex CLI
+### 安裝與登入 [Codex CLI](https://github.com/openai/codex)
 1. `mkdir PPTPlaner && cd PPTPlaner`（或使用既有資料夾）。
 2. 下載/複製 `AGENTS.md` 及章節 Markdown (`Chapter*.md`) 到此資料夾。
 3. 安裝 CLI：
