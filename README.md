@@ -1,6 +1,18 @@
 # PPTPlaner
 
-PPTPlaner 是一個結合「原文書共讀 + AI 簡報製作」的工作範本。透過 Codex CLI 讀取章節 Markdown（例如 Chapter01.md、Chapter07.md），即可自動產出簡報、講稿、Mermaid 圖表與操作指引，協助學員在有限時間內掌握重點，同時維持原作的學習深度。
+PPTPlaner 是一個結合「原文書共讀 + AI 簡報製作」的工作範本。透過 Codex CLI 讀取章節 Markdown（例如 Chapter01.md、Chapter07.md），即可自動產出簡報的設計稿、備忘稿、搭配簡報用的圖表草稿(Mermaid格式)與這些草稿如何使用的指引，協助學員在有限時間內掌握重點，同時維持原作的學習深度。
+
+```text
+# 本專案大概流程
+-> 原文書轉換成Markdown.md
+-> PPTPlaner 專案
+-> 簡報設計稿
+-> 丟到 AI 簡報生成網站(如: Gamma)
+-> 產出簡報
+-> 手動將簡報圖表加入簡報
+-> 加上備忘稿
+-> 完成一份有深度、有內容的完整簡報
+```
 
 ## 專案目錄
 ```text
@@ -30,7 +42,7 @@ PPTPlaner/
    - 建議將檔名統一為 ChapterXX.md，以利 Codex 讀取。  
    - 詳細圖文教學可參考 [docs/markdown-conversion.md](docs/markdown-conversion.md)。
 
-## 前置環境
+## 本專案環境建置
 
 ### 安裝 Node.js（Windows 建議使用 nvm-windows）
 1. 下載 [nvm-windows](https://github.com/coreybutler/nvm-windows/releases) 的最新 
@@ -49,28 +61,27 @@ vm-setup.exe。
 1. 建立資料夾並進入：mkdir PPTPlaner && cd PPTPlaner（或使用既有資料夾）。
 2. 將 AGENTS.md 與章節 Markdown (Chapter*.md) 放入該資料夾。可先 fork/clone 本專案再替換章節內容。
 3. 安裝 CLI：
-   `ash
+   `bash
    npm install -g @openai/codex-cli
    `
 4. 登入 Codex：
-   `ash
+   `bash
    codex login
    `
    - 會開啟瀏覽器，使用擁有 ChatGPT Plus 權限的 OpenAI 帳號登入即可。  
    - 若偏好使用 API key，可改用 codex login --api-key YOUR_KEY。
 5. 在專案根目錄執行 codex init，讓 CLI 記住專案設定並自動讀取 AGENTS.md。
 
-## 使用流程
+## 本專案使用步驟教學
 1. **放入章節 Markdown**：將最新章節（如 Chapter07.md）放於專案根目錄。
 2. **啟動 Codex**：執行 codex work 或 codex chat，開場即提醒「請先閱讀 AGENTS.md」。
 3. **委派產出**：請 Codex 依章節內容生成：
    - slides/NN_section.md（每段 ≤10 頁，含 --- 分頁與風格建議）。
-   - 
-otes/note-section-zh.md（台灣繁中講稿，保留英文專有名詞）。
+   - notes/note-section-zh.md（台灣繁中講稿，保留英文專有名詞）。
    - diagrams/*.mmd（Mermaid 原始碼，可貼到 mermaid.live 轉圖）。
    - 指引.html（段落清單 + 開啟連結 + 複製按鈕）。
 4. **檢查成果**：打開 指引.html，確認內容、複製按鈕與開啟連結皆正常。
-5. **匯入簡報工具**：依 指引.html 提示將 Markdown 貼入 Gamma，圖表在 mermaid.live 轉換後嵌入。
+5. **匯入簡報工具**：依 指引.html 提示將 Markdown 貼入 AI 簡報製作工具(例如: [Gamma](https://gamma.app/) )，而圖表則可以透過線上工具: [Mermaid Live Editer](https://mermaid.live/) 轉換成圖片後嵌入簡報中。
 6. **排練與記錄**：練習講稿並視需要更新 AGENTS.md 或 指引.html 的注意事項、日期與下一步建議。
 
 ## 建議工作習慣
