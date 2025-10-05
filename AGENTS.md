@@ -16,7 +16,7 @@
 ## Output Packaging Checklist
 - Ensure `slides/` holds all session chunks (<=10 pages each) and that matching `notes/` files provide Traditional Chinese talking points with preserved English terms.
 - Save diagram sources in `diagrams/` and export any required SVG or PNG copies into `assets/` or `slides/img/` prior to delivery.
-- Refresh the interactive guide: rebuild `指引.html` (segment list with open links and copyable textareas) and update the pointer note in `指引.md`.
+- Refresh the interactive guide: rebuild `指引.html` (segment list with open links and copyable textareas) so it reflects the latest content.
 - Bundle the Markdown, notes, diagrams, and guidance files together when handing off so classmates can study directly from the package.
 
 ## Content Coverage & Storycraft
