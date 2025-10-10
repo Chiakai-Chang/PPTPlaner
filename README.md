@@ -129,7 +129,16 @@ vm-setup.exe。
 ```text
 請幫我撰寫簡報第11頁備忘稿，內容如下(記得這簡報是從 Chapter5.md 出來的，我們的目的不是對齊這份簡報，而是要完整學習該章節內容，所以備忘稿很重要):
 '''
-Memory As Construction The Public Misconception Most people view memory as video playback—a perfect recording that can be rewound and replayed with complete accuracy. This metaphor is deeply misleading. The Reality of Retrieval Actual retrieval mixes the original memory trace with current retrieval cues, general knowledge, expectations, and schemas. Each recall is a reconstruction, not a replay. Pattern Completion The same event recalled with different cues produces different versions. Our brains fill in gaps using whatever information is available at retrieval time.
+Memory As Construction
+
+The Public Misconception
+Most people view memory as video playback—a perfect recording that can be rewound and replayed with complete accuracy. This metaphor is deeply misleading.
+
+The Reality of Retrieval
+Actual retrieval mixes the original memory trace with current retrieval cues, general knowledge, expectations, and schemas. Each recall is a reconstruction, not a replay.
+
+Pattern Completion
+The same event recalled with different cues produces different versions. Our brains fill in gaps using whatever information is available at retrieval time.
 '''
 ```
 
@@ -238,4 +247,5 @@ Memory As Construction The Public Misconception Most people view memory as video
 otes/、diagrams/，並說明主要改動與測試方式。
 
 若對流程或 Codex CLI 有任何建議，歡迎於 Issue 區回報；期待透過 AI 協助，讓原文書共讀更有效率，也更容易上台分享。
+
 
