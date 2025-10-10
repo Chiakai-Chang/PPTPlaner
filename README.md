@@ -11,6 +11,7 @@ PPTPlaner 是一個結合「原文書共讀 + AI 簡報製作」的工作範本�
 -> 手動將 PPTPlaner 專案生成的簡報圖表 Mermaid 檔轉換成圖表加入簡報
 -> 手動將 PPTPlaner 專案生成的備忘稿加入簡報，並檢查整個簡報
 -> 完成一份有深度、有內容的完整簡報
+-> 將 **簡報** 連同**原文書的 Markdown.md** 一併提供給 LLM (例如: ChatGPT、Gemini、Claude等)，請 LLM 根據原文以及簡報每一頁的內容，目的不是對齊簡報，而是完整學習該章節內容為目的，逐頁規劃生成該頁的完整備忘稿內容
 ```
 
 ## 專案目錄
@@ -81,7 +82,149 @@ vm-setup.exe。
    - 指引.html（段落清單 + 開啟連結 + 複製按鈕）。
 4. **檢查成果**：打開 指引.html，確認內容、複製按鈕與開啟連結皆正常。
 5. **匯入簡報工具**：依 指引.html 提示將 Markdown 貼入 AI 簡報製作工具(例如: [Gamma](https://gamma.app/) )，而圖表則可以透過線上工具: [Mermaid Live Editer](https://mermaid.live/) 轉換成圖片後嵌入簡報中。
-6. **排練與記錄**：練習講稿並視需要更新 AGENTS.md 或 指引.html 的注意事項、日期與下一步建議。
+6. **逐頁生成備忘稿**：請參考以下「**生成高品質備忘稿參考作法**」
+
+### **生成備忘稿可參考**
+* **初始系統提示詞**
+   * 將 **簡報**、**原文書的 Markdown.md**檔案，以及以下提示詞，一併提供給 LLM (例如: ChatGPT、Gemini、Claude等)
+```text
+# **系統提示**
+你是一位熟悉心理學、刑事偵查與教育呈現設計的講稿編輯助理。
+你的任務是根據使用者提供的原文書章節，以及使用者提供的簡報逐頁內容，
+撰寫適合博士生、研究生研討課使用的高品質 **逐頁備忘稿**。
+
+# **撰寫原則**：
+1. 使用**臺灣繁體中文**，語氣學術但自然、具教學節奏。
+2. 每頁輸出分為兩段：
+   * **【摘要重點】**：整理該頁的概念、理論、研究或章節位置，讓講者能快速掌握要點。
+   * **【講述稿】**：撰寫成可直接貼進 PowerPoint 備忘欄（Notes）的逐字口語稿，
+     應自然流暢、適合口頭發表，避免條列式、要能「說得出來」。
+3. 若有**專有名詞、人名、理論或實驗**，請保留英文原文並加上中文解釋，例如：
+   > *Tulving & Thomson (1971)* 的「**編碼特異性原則（Encoding Specificity Principle）**」。
+4. 撰寫目的不是僅對齊簡報文字，而是**完整學習章節內容**，
+   需融合該章原文（如 Chapter5.md）中的核心概念、例子、理論、與實務應用。
+5. 文字長度：每頁講述稿約 2–3 分鐘可講完，約 250–350 字，
+   適度引用研究或案例，但不需過度細節化。
+6. 若章節有延續性（如上頁概念的延伸），可在開頭簡短銜接說明。
+7. 結尾若合適，可加入一句總結或反思，幫助過渡到下一頁。
+
+# **參考輸出範例格式**（助理回答時應遵循此架構，但不必遵循此格式，以最佳呈現為主）：
+## 🧠 第 X 頁：<簡報頁標題>
+（說明此頁是對應章節理論位置，重點是什麼，簡要說明承先啟後的部分）
+
+### 【摘要重點】
+（簡要說明此頁簡報內容，用講者熟悉語言快速對齊進度與這頁內容）
+
+### 【講述稿】
+（完整逐字講稿，學術但自然、有趣且引人入勝，真正讓人了解原文的內容，可直接貼入 PowerPoint 備忘欄）
+```
+
+* 然後每一頁可參考使用以下提示詞來生成: 
+```markdown
+請幫我撰寫簡報第 X 頁備忘稿，內容如下(請記得這簡報是從原文出來的，我們的目的不是對齊這份簡報，而是要完整學習該章節內容，所以備忘稿很重要)：
+<貼上該頁簡報文字內容>
+```
+
+* **(逐頁)使用範例**：
+```text
+請幫我撰寫簡報第11頁備忘稿，內容如下(記得這簡報是從 Chapter5.md 出來的，我們的目的不是對齊這份簡報，而是要完整學習該章節內容，所以備忘稿很重要):
+'''
+Memory As Construction The Public Misconception Most people view memory as video playback—a perfect recording that can be rewound and replayed with complete accuracy. This metaphor is deeply misleading. The Reality of Retrieval Actual retrieval mixes the original memory trace with current retrieval cues, general knowledge, expectations, and schemas. Each recall is a reconstruction, not a replay. Pattern Completion The same event recalled with different cues produces different versions. Our brains fill in gaps using whatever information is available at retrieval time.
+'''
+```
+
+```markdown
+(以下是 ChatGPT 的回答)
+非常好 👏
+第 11 頁「**Memory As Construction**」是 Chapter 5 的核心概念之一。
+這頁要讓學生理解：
+
+> 「記憶不是攝影機（not a recording device），而是建構性的心理重組過程（constructive reconstruction process）。」
+
+這個觀念是整章理論的支點，也奠定後續「犯罪腳本（crime scripts）」與「刻板印象干擾」的理論背景。
+
+以下是可直接放入 PowerPoint 備忘欄的完整逐字講稿👇
+
+---
+
+### 🧩 第 11 頁：Memory As Construction
+
+#### 【摘要重點】
+
+* **大眾誤解（Public Misconception）**：記憶常被誤以為是精準的「影片回放」。
+* **真實情況（Reality of Retrieval）**：每一次回想都混合了原始記憶痕跡、當下線索、一般知識與期待。
+* **模式補全（Pattern Completion）**：在回想過程中，大腦會主動填補空白，使同一事件在不同情境下呈現出不同版本。
+
+---
+
+#### 【講述稿】
+
+在上一頁我們提到，記憶是個動態系統。
+這一頁要更進一步說明——
+**記憶的本質，是「建構（Construction）」，不是「重播（Replay）」**。
+
+---
+
+**首先是大眾的誤解（Public Misconception）**。
+多數人以為記憶就像影片，
+可以「倒帶」、「重播」，甚至「放慢看清楚細節」。
+但心理學告訴我們：
+
+> 這個比喻是錯誤的，甚至是危險的。
+
+因為記憶不是一個封存的檔案，
+而是一個會在提取當下被重新組合的活資料。
+
+---
+
+**第二，我們來看真實的回想過程（Reality of Retrieval）**。
+每一次提取記憶時，大腦都會把：
+
+* 原始的記憶痕跡（Memory Trace），
+* 當下的提取線索（Retrieval Cues），
+* 自己的知識背景（General Knowledge），
+* 以及既有的認知框架（Schemas），
+  整合成一個「看似完整」的敘述。
+
+換句話說，我們記得的不只是「事件」，
+還包括我們「如何理解那個事件」。
+因此，**回想永遠是重新建構（Reconstruction），而不是回放（Playback）**。
+
+---
+
+**第三個重點是「模式補全（Pattern Completion）」**。
+這是一個神經心理學概念，指的是：
+
+> 當記憶中有缺口時，大腦會自動用可得資訊去「補齊」它。
+
+例如：同一個事件，若在不同的提問情境下回想，
+人可能會產生不同版本的敘述。
+這並非說謊，而是大腦在進行「合理化填補」。
+
+舉例來說，一名證人第一次被問「那時你看到誰？」時，
+他可能說「我不太確定，應該是一個高個子男子」。
+但如果第二次被問「那個男的有戴帽子嗎？」——
+即使他當初沒注意，大腦也可能在第二次回想時自動「補上帽子」這個細節。
+
+---
+
+因此，我們在面對證人時，要記得：
+**他所敘述的，往往是一次「重組後的真實」**。
+這不代表他不誠實，而是人類記憶本來就帶有建構性。
+
+對法律與偵查而言，這有兩個啟示：
+1️⃣ 不能把證詞當成「錄影重播」；
+2️⃣ 要理解每一次訪談，都是一次「再建構」。
+
+換句話說，我們聽到的，不只是他記得什麼，
+還包括「他今天是怎麼被引導去記得那些東西」。
+
+---
+
+是否要我繼續撰寫 **第 12 頁（Schemas Fill The Gaps）** 的備忘稿？
+那一頁會延伸本章「建構性記憶」的主題，
+討論「圖式（Schema）」如何幫我們理解世界、同時也導致錯誤與偏誤（如刻板印象與文化預期）。
+```
 
 ## 建議工作習慣
 - 章節更新時，優先維護 Chapter*.md；其他檔案可重新透過 Codex 依 AGENTS.md 產出。
@@ -95,3 +238,4 @@ vm-setup.exe。
 otes/、diagrams/，並說明主要改動與測試方式。
 
 若對流程或 Codex CLI 有任何建議，歡迎於 Issue 區回報；期待透過 AI 協助，讓原文書共讀更有效率，也更容易上台分享。
+
