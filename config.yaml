@@ -1,0 +1,49 @@
+# ============================================================
+#  PPTPlaner Configuration File
+#  用來告訴系統這次要處理哪份文件、使用哪個 Agent、
+#  怎麼切頁、是否生成逐頁講稿與指引頁。
+# ============================================================
+
+# 🧠 主任務設定
+source_file: "Chapter5.md"         # 要處理的原始文檔（可改為 Thesis.md、Report.md 等）
+agent: "codex"                     # 使用的 CLI Agent（codex / gemini / claude）
+notes_locale: "zh-TW"              # 備忘稿語言
+preserve_english_terms: true       # 是否保留英文原文與專有名詞
+
+# 🧩 切頁策略
+split_strategy: "semantic"         # 拆頁方式：semantic（語意段落）或 fixed（固定行數）
+max_pages_per_file: 10             # 每個 slide 檔最多包含幾頁（Gamma 限制建議為10）
+
+# 🗣️ 備忘稿設定
+memo_per_page: true                # 是否逐頁生成講稿（建議：true）
+memo_target_time_min: 2            # 每頁講稿口述時間下限（分鐘）
+memo_target_time_max: 3            # 每頁講稿口述時間上限（分鐘）
+
+# 🧱 輸出結構（可保持預設）
+slides_dir: "slides"
+notes_dir: "notes"
+diagrams_dir: "diagrams"
+guide_file: "指引.html"
+
+# 🧰 命名規則
+slides_naming: "slides/{page}_{topic}.md"
+notes_naming:  "notes/note-{page}_{topic}-zh.md"
+
+# 🧭 指引頁產出
+build_guide: true                  # 是否自動產出 指引.html（建議：true）
+auto_open_guide: true              # 產出後是否自動在瀏覽器打開
+
+# 🧪 驗證設定
+validate_alignment: true           # 檢查 slides 與 notes 是否一一對應
+validate_keywords: true            # 檢查備忘稿是否含英文術語
+validate_time_estimate: true       # 根據字數估算口述時間是否合理
+
+# 🧮 雙語輸出（進階）
+dual_language: false               # 若需生成英文稿，改為 true
+
+# 📦 打包交付設定
+zip_output: true                   # 是否自動打包 slides + notes + diagrams + 指引.html
+zip_name: "PPTPlaner_Package.zip"  # 打包檔名
+
+# 💡 預設提示語氣（可視需求修改）
+tone: "academic-friendly"          # academic / formal / narrative / teaching

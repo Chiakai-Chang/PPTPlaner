@@ -1,0 +1,157 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width,initial-scale=1" />
+<title>指引｜Slides & Notes Guide</title>
+<style>
+  :root{
+    --bg:#ffffff; --fg:#0f172a; --muted:#64748b; --card:#f8fafc; --accent:#2563eb; --accent-2:#1d4ed8;
+    --border:#e2e8f0; --ok:#16a34a; --warn:#ca8a04; --bad:#dc2626; --pill:#e0e7ff;
+  }
+  .dark{
+    --bg:#0b1220; --fg:#e5e7eb; --muted:#94a3b8; --card:#0f172a; --accent:#60a5fa; --accent-2:#3b82f6;
+    --border:#1f2937; --ok:#22c55e; --warn:#f59e0b; --bad:#f87171; --pill:#172554;
+  }
+  *{box-sizing:border-box}
+  body{margin:0; font-family:ui-sans-serif,system-ui,-apple-system,"Segoe UI",Roboto,"Noto Sans TC",Arial,"Apple Color Emoji","Segoe UI Emoji"; background:var(--bg); color:var(--fg);}
+  header{position:sticky; top:0; z-index:10; backdrop-filter:saturate(180%) blur(10px); background:color-mix(in srgb, var(--bg) 88%, transparent); border-bottom:1px solid var(--border);}
+  .container{max-width:1100px; margin:0 auto; padding:16px;}
+  h1{margin:6px 0 2px; font-size:22px;}
+  p.subtitle{margin:0 0 10px; color:var(--muted); font-size:14px;}
+  .toolbar{display:flex; gap:8px; flex-wrap:wrap; align-items:center; margin:8px 0 12px;}
+  input[type="search"], input[type="text"]{padding:10px 12px; border:1px solid var(--border); border-radius:12px; background:var(--card); color:var(--fg); outline:none; min-width:260px;}
+  button{padding:10px 12px; border:1px solid var(--border); border-radius:12px; background:var(--card); color:var(--fg); cursor:pointer;}
+  button.primary{background:var(--accent); color:white; border-color:var(--accent-2);}
+  button.ghost{background:transparent;}
+  .grid{display:grid; grid-template-columns: 1fr 1fr; gap:12px; align-items:start;}
+  @media (max-width: 900px){ .grid{grid-template-columns:1fr;} }
+  .row{background:var(--card); border:1px solid var(--border); border-radius:16px; padding:14px;}
+  .row h3{margin:0 0 10px; font-size:15px;}
+  .row small{color:var(--muted);}
+  .meta{display:flex; flex-wrap:wrap; gap:10px; margin:6px 0 8px;}
+  .meta a{color:var(--accent); text-decoration:none;}
+  .meta a:hover{text-decoration:underline;}
+  .pill{display:inline-flex; align-items:center; gap:6px; padding:3px 10px; border:1px solid var(--border); border-radius:999px; background:var(--pill); color:var(--fg); font-size:12px;}
+  textarea{width:100%; min-height:140px; padding:10px; border:1px solid var(--border); border-radius:12px; background:var(--bg); color:var(--fg);}
+  .buttons{display:flex; gap:8px; align-items:center; margin-top:8px;}
+  .hint{font-size:12px; color:var(--muted);}
+  .hr{height:1px; background:var(--border); margin:10px 0;}
+  .footer{color:var(--muted); font-size:12px; padding:20px 0 40px; text-align:center;}
+  .badge{font-size:11px; padding:2px 8px; border-radius:999px; border:1px solid var(--border); background:var(--card); color:var(--muted);}
+  .ok{color:var(--ok)} .warn{color:var(--warn)} .bad{color:var(--bad)}
+</style>
+</head>
+<body>
+<header>
+  <div class="container">
+    <h1>指引｜Slides & Notes Guide</h1>
+    <p class="subtitle">快速對照 <span class="pill">slides/</span> 與 <span class="pill">notes/</span>，支援搜尋、深色模式、一鍵複製講稿（Traditional Chinese，保留英文術語）</p>
+    <div class="toolbar">
+      <input id="search" type="search" placeholder="搜尋頁碼 / 主題 / 檔名 / 標題（Search page / topic / filename / heading）" />
+      <button id="dark" class="ghost">🌙 切換深色（Dark Mode）</button>
+      <span class="hint">小撇步：把講稿貼入每列的文字框，按 <b>Copy</b> 後貼到簡報 Presenter Notes。</span>
+    </div>
+  </div>
+</header>
+
+<main class="container">
+  <div class="hr"></div>
+
+  {# 計數摘要 #}
+  <div class="toolbar" style="justify-content:space-between;">
+    <div class="hint">
+      共 <b>{{ rows|length }}</b> 頁 ·
+      Slides：<b>{{ rows|selectattr('slide_path')|list|length }}</b> ·
+      Notes：<b>{{ rows|selectattr('note_path')|list|length }}</b>
+    </div>
+    <div>
+      <span class="badge">Copy 先複製到剪貼簿 → 再貼到簡報備註</span>
+    </div>
+  </div>
+
+  <div id="grid" class="grid">
+    {% for r in rows %}
+    <div class="row" data-page="{{ r.page }}">
+      <h3>
+        第 <b>{{ r.page }}</b> 頁
+        {% if r.topic %}｜Topic: {{ r.topic }}{% endif %}
+        {% if r.slide_name %}<small>（{{ r.slide_name }}）</small>{% endif %}
+      </h3>
+
+      <div class="meta">
+        {% if r.slide_path %}
+          <span><small>Slide：</small><a href="{{ r.slide_path }}" target="_blank" rel="noopener">{{ r.slide_path }}</a></span>
+        {% else %}
+          <span class="bad"><small>Slide：</small>缺</span>
+        {% endif %}
+        {% if r.note_path %}
+          <span><small>Note：</small><a href="{{ r.note_path }}" target="_blank" rel="noopener">{{ r.note_path }}</a></span>
+        {% else %}
+          <span class="warn"><small>Note：</small>未建立</span>
+        {% endif %}
+        {% if r.heading %}
+          <span class="pill">Heading: {{ r.heading }}</span>
+        {% endif %}
+      </div>
+
+      <textarea class="memo" placeholder="在此貼上本頁講稿（Paste memo here for quick copy）"></textarea>
+      <div class="buttons">
+        <button class="primary copy">Copy</button>
+        <span class="hint">複製成功後按 <kbd>Ctrl/⌘+V</kbd> 貼到簡報備註。</span>
+      </div>
+    </div>
+    {% endfor %}
+  </div>
+</main>
+
+<footer class="footer">
+  <div class="container">
+    <div class="hr"></div>
+    <p>© PPTPlaner · 指引頁（Guide）— 支援 Codex CLI / Gemini CLI / Claude Code · 保留英文關鍵詞 + 繁體中文說明</p>
+  </div>
+</footer>
+
+<script>
+(function(){
+  const rows = {{ rows_json | safe }};
+
+  // Dark mode
+  const setDark = (on) => { document.documentElement.classList.toggle('dark', !!on); localStorage.setItem('pp_dark', on ? '1':'0'); };
+  setDark(localStorage.getItem('pp_dark')==='1');
+  document.getElementById('dark').addEventListener('click', ()=> setDark(!(localStorage.getItem('pp_dark')==='1')));
+
+  // Render已由Jinja完成，此處只做互動
+  const grid = document.getElementById('grid');
+
+  // Copy buttons
+  grid.querySelectorAll('.row').forEach(row=>{
+    const btn = row.querySelector('.copy');
+    const ta  = row.querySelector('.memo');
+    btn.addEventListener('click', ()=>{
+      ta.focus(); ta.select();
+      try{
+        const ok = document.execCommand('copy');
+        btn.textContent = ok ? '已複製 Copied' : '複製失敗 Retry';
+      }catch(e){
+        btn.textContent = '複製失敗 Retry';
+      }
+      setTimeout(()=> btn.textContent='Copy', 900);
+    });
+  });
+
+  // Search
+  const q = document.getElementById('search');
+  const all = Array.from(grid.children);
+  q.addEventListener('input', ()=>{
+    const s = q.value.toLowerCase().trim();
+    all.forEach(el=>{
+      if(!s){ el.style.display=''; return; }
+      const blob = el.innerText.toLowerCase();
+      el.style.display = blob.includes(s) ? '' : 'none';
+    });
+  });
+})();
+</script>
+</body>
+</html>
