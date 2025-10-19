@@ -31,7 +31,7 @@
 - 確認版本：
   ```powershell
   python --version
-````
+  ```
 
 ### 2️⃣ 安裝必要套件
 
@@ -243,3 +243,4 @@ flowchart LR
 - 可直接放進 GitHub `/docs`；
 - 語言完整、格式一致；
 - 所有命令都能在 **Windows PowerShell** 下執行。  
+
