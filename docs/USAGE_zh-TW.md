@@ -235,12 +235,3 @@ flowchart LR
 **最後更新**：2025-10-20
 **聯絡人**：[lotifv@gmail.com](mailto:lotifv@gmail.com)（Chang, Chia-Kai）
 
-```
-
----
-
-這份 `docs/USAGE_zh-TW.md` 是為臺灣實務環境特別撰寫的版本：
-- 可直接放進 GitHub `/docs`；
-- 語言完整、格式一致；
-- 所有命令都能在 **Windows PowerShell** 下執行。  
-
