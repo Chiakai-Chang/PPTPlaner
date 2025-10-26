@@ -100,6 +100,7 @@ def main():
     # Use dest='source_file' to match the key in config.yaml
     parser.add_argument("--source", dest="source_file", help="Source file to process")
     parser.add_argument("--agent", dest="agent", help="AI agent to use (e.g., gemini)")
+    parser.add_argument("--custom-instruction", dest="custom_instruction", help="User-provided custom instruction for the MEMO agent")
     mode_group = parser.add_mutually_exclusive_group()
     mode_group.add_argument("--slides-only", action="store_true")
     mode_group.add_argument("--memos-only", action="store_true")
