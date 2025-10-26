@@ -57,14 +57,14 @@ AI 自動化章節講稿與簡報生成系統
 
 ```mermaid
 flowchart TD
-    A[原始文本 Source File<br>(Chapter5.md / Report.txt)] --> B[orchestrate.py<br>主控腳本]
-    B --> C[PLAN 模式<br>切頁規劃 (JSON)]
-    B --> D[SLIDE 模式<br>逐頁簡報 Markdown]
-    B --> E[MEMO 模式<br>逐頁備忘稿 (繁中＋英文)]
-    D & E --> F[validate.py<br>品質檢查]
-    F --> G[build_guide.py<br>生成 指引.html]
-    G --> H[ZIP 打包成果<br>(PPTPlaner_Package.zip)]
-    B -.-> I[多 Agent 支援<br>Codex / Gemini / Claude]
+    A["原始文本 Source File<br>(Chapter5.md / Report.txt)"] --> B["scripts/orchestrate.py<br>主控腳本"]
+    B --> C["PLAN 模式<br>切頁規劃 (JSON)"]
+    B --> D["SLIDE 模式<br>逐頁簡報 Markdown"]
+    B --> E["MEMO 模式<br>逐頁備忘稿 (繁中＋英文)"]
+    D & E --> F["scripts/validate.py<br>品質檢查"]
+    F --> G["scripts/build_guide.py<br>生成 guide.html"]
+    G --> H["最終產出<br>(在 output/資料夾中)"]
+    B -.-> I["多 Agent 支援<br>(Codex / Gemini / Claude)"]
 ````
 
 ---
