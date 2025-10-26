@@ -5,8 +5,8 @@
 # ============================================================
 
 # 🧠 主任務設定
-source_file: "Chapter5.md"         # 要處理的原始文檔（可改為 Thesis.md、Report.md 等）
-agent: "codex"                     # 使用的 CLI Agent（codex / gemini / claude）
+source_file: "source/Chapter9.md"         # 要處理的原始文檔（可改為 Thesis.md、Report.md 等）
+agent: "gemini"                     # 使用的 CLI Agent（codex / gemini / claude）
 notes_locale: "zh-TW"              # 備忘稿語言
 preserve_english_terms: true       # 是否保留英文原文與專有名詞
 

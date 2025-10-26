@@ -1,0 +1,36 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>PPTPlaner Guide</title>
+    <style>
+        body { font-family: sans-serif; line-height: 1.6; margin: 0; padding: 20px; background-color: #f4f4f4; }
+        .container { max-width: 1200px; margin: auto; background: white; padding: 20px; box-shadow: 0 0 10px rgba(0,0,0,0.1); }
+        .page { display: flex; border-bottom: 2px solid #eee; padding: 20px 0; }
+        .slide { flex: 1; padding-right: 20px; border-right: 1px solid #ddd; }
+        .notes { flex: 1; padding-left: 20px; white-space: pre-wrap; font-family: monospace; }
+        h1, h2 { border-bottom: 1px solid #ddd; padding-bottom: 10px; }
+        pre { background: #eee; padding: 10px; border-radius: 5px; white-space: pre-wrap; word-wrap: break-word; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>PPTPlaner Guide</h1>
+        <p>This guide displays the generated slides and notes side-by-side.</p>
+        <hr>
+        {% for page in pages %}
+        <div class="page">
+            <div class="slide">
+                <h2>Slide {{ page.id }}</h2>
+                <pre>{{ page.slide_content }}</pre>
+            </div>
+            <div class="notes">
+                <h2>Notes for Slide {{ page.id }}</h2>
+                <pre>{{ page.note_content }}</pre>
+            </div>
+        </div>
+        {% endfor %}
+    </div>
+</body>
+</html>

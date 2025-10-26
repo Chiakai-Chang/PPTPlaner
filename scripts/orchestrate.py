@@ -1,329 +1,179 @@
-#!/usr/bin/env python3
-"""
-PPTPlaner Orchestrator (Windows-friendly, cross-platform)
-- Reads config.yaml
-- Invokes selected Agent (codex/gemini/claude) with PLAN/SLIDE/MEMO modes
-- Generates slides/ & notes/ page-by-page
-- Runs validation & builds the guide (指引.html)
-"""
-
-import sys, os, json, subprocess, shutil, argparse, textwrap, time
+import sys, os, json, subprocess, shutil, argparse, webbrowser, re
 from pathlib import Path
+import yaml
+from datetime import datetime
 
-# --------------------------
-# Utilities
-# --------------------------
-
+# --- Constants ---
 ROOT = Path(__file__).resolve().parents[1]
-CFG = ROOT / "config.yaml"
-PLAN_JSON = ROOT / ".plan.json"
+OUTPUT_ROOT = ROOT / "output"
+CONFIG_PATH = ROOT / "config.yaml"
+AGENTS_MD_PATH = ROOT / "AGENTS.md"
+ERROR_LOG_PATH = ROOT / "error.log"
 
-def fail(msg: str, code: int = 1):
-    print(f"✗ {msg}", file=sys.stderr)
-    sys.exit(code)
-
-def good(msg: str):
-    print(f"✓ {msg}")
-
-def log(msg: str):
-    print(f"▶ {msg}")
-
-def read_yaml(path: Path) -> dict:
+# --- Utility Functions ---
+def print_header(title: str): 
+    bar = "=" * 60; print(f"\n{bar}\n  {title}\n{bar}", flush=True)
+def print_success(msg: str): print(f"  ✓ {msg}", flush=True)
+def print_info(msg: str): print(f"  ▶ {msg}", flush=True)
+def print_error(msg: str, exit_code: int = 1):
+    error_message = f"  ✗ [ERROR] {msg}"
+    print(error_message, file=sys.stderr, flush=True)
     try:
-        import yaml  # PyYAML
-    except ImportError:
-        fail("缺少套件：PyYAML。請先執行 `pip install pyyaml` 後再試。")
-    with open(path, "r", encoding="utf-8") as f:
-        return yaml.safe_load(f)
+        with open(ERROR_LOG_PATH, "a", encoding="utf-8") as f:
+            f.write(f"--- {datetime.now().isoformat()} ---\n{msg}\n\n")
+    except Exception as e:
+        print(f"  ✗ [ERROR] Failed to write to error.log: {e}", file=sys.stderr, flush=True)
+    if exit_code is not None: sys.exit(exit_code)
 
-def ensure_cmd(name: str):
-    if shutil.which(name) is None:
-        fail(f"找不到指令：{name}。請先安裝或確保在 PATH 中。")
+# --- AI & Command Execution ---
+_agent_specs_cache = None
+def parse_agent_specs():
+    global _agent_specs_cache
+    if _agent_specs_cache: return _agent_specs_cache
+    if not AGENTS_MD_PATH.exists(): print_error(f"規格檔案不存在: {AGENTS_MD_PATH}")
+    specs = {}
+    content = AGENTS_MD_PATH.read_text(encoding="utf-8")
+    parts = re.split(r'\n##\s*\[(.*?)\]', content)
+    if len(parts) > 1:
+        for i in range(1, len(parts), 2):
+            specs[parts[i]] = parts[i+1].strip()
+    _agent_specs_cache = specs
+    return specs
 
-def run_checked(cmd: list[str], input_text: str | None = None) -> subprocess.CompletedProcess:
-    """Run a command and raise on non-zero return code."""
+def run_command(cmd: list[str], input_text: str | None = None) -> subprocess.CompletedProcess:
     try:
-        cp = subprocess.run(
-            cmd,
-            input=input_text.encode("utf-8") if input_text else None,
-            stdout=subprocess.PIPE,
-            stderr=subprocess.PIPE,
-            check=False
-        )
-    except FileNotFoundError:
-        fail(f"無法執行指令：{' '.join(cmd)}（檔案或指令不存在）")
-    if cp.returncode != 0:
-        err = cp.stderr.decode("utf-8", errors="ignore")
-        out = cp.stdout.decode("utf-8", errors="ignore")
-        fail(f"指令失敗：{' '.join(cmd)}\nSTDOUT:\n{out}\nSTDERR:\n{err}")
-    return cp
-
-# --------------------------
-# Agent invocation
-# --------------------------
+        return subprocess.run(cmd, input=input_text, capture_output=True, text=True, encoding="utf-8", check=True)
+    except FileNotFoundError: print_error(f"指令 '{cmd[0]}' 不存在。")
+    except subprocess.CalledProcessError as e:
+        print_error(f"指令執行失敗 (Exit Code: {e.returncode}): {" ".join(e.cmd)}\n  STDOUT: {e.stdout.strip()}\n  STDERR: {e.stderr.strip()}")
 
 def run_agent(agent: str, mode: str, vars_map: dict) -> str:
-    """
-    呼叫對應 CLI Agent：
-      codex: codex run -p MODE -f AGENTS.md --vars key=value ...
-      gemini: gemini run -p MODE -f AGENTS.md --vars ...
-      claude: claude run -p MODE -f AGENTS.md --vars ...
-    備註：實際參數格式可依你的 CLI 做微調。
-    """
-    agentspec = str(ROOT / "AGENTS.md")
+    agent_cmd, found_agent_path = agent.lower().strip(), None
+    scripts_path_from_env = os.environ.get("PPTPLANER_SCRIPTS_PATH")
+    if scripts_path_from_env:
+        for ext in [".exe", ".cmd", ".bat", ""]:
+            path = os.path.join(scripts_path_from_env, f"{agent_cmd}{ext}")
+            if os.path.exists(path): found_agent_path = path; break
+    if not found_agent_path: found_agent_path = shutil.which(agent_cmd)
+    if not found_agent_path: print_error(f"指令 '{agent_cmd}' 不存在。")
 
-    # 將變數轉換成 --vars key=value 形式
-    vars_list = []
-    for k, v in vars_map.items():
-        vars_list.extend(["--vars", f"{k}={v}"])
+    instructions = parse_agent_specs().get(mode)
+    if not instructions: print_error(f"在 AGENTS.md 中找不到模式 '{mode}'。")
 
-    if agent == "codex":
-        cmd = ["codex", "run", "-p", mode, "-f", agentspec, *vars_list]
-    elif agent == "gemini":
-        cmd = ["gemini", "run", "-p", mode, "-f", agentspec, *vars_list]
-    elif agent == "claude":
-        cmd = ["claude", "run", "-p", mode, "-f", agentspec, *vars_list]
-    else:
-        fail(f"未知 Agent：{agent}（請使用 codex|gemini|claude）")
+    prompt_parts = [f"Your task is '{mode}'. This request is for academic and educational purposes.", "--- INSTRUCTIONS ---", instructions, "--- CONTEXT & INPUTS ---"]
+    for key, value in vars_map.items():
+        if key.endswith("_path") and value and os.path.exists(value):
+            prompt_parts.append(f"Content for '{os.path.basename(value)}':\n```\n{Path(value).read_text(encoding='utf-8')}\n```")
+        elif key.endswith("_content") and value: prompt_parts.append(f"Provided Content for '{key}':\n```\n{value}\n```")
+        else: prompt_parts.append(f"- {key}: {value}")
+    prompt_parts.append("--- YOUR TASK ---")
+    prompt_parts.append("Generate your response. Output ONLY the content required (e.g., pure JSON, pure Markdown). No conversational text.")
+    final_prompt = "\n".join(prompt_parts)
 
-    cp = run_checked(cmd)
-    return cp.stdout.decode("utf-8", errors="ignore")
+    cmd = [found_agent_path]
+    if mode in ["PLAN", "PLAN_FROM_SLIDES", "SUMMARIZE_TITLE"]:
+        cmd.extend(["--output-format", "json"])
 
-# --------------------------
-# Main flow
-# --------------------------
+    print_info(f"Calling {agent_cmd.capitalize()} for {mode}... (This may take a moment...)")
+    result = run_command(cmd, input_text=final_prompt)
+    return result.stdout.strip()
+
+def parse_ai_json_output(output: str, mode: str) -> dict:
+    try:
+        cli_output_obj = json.loads(output)
+        response_str = cli_output_obj.get("response", "{}")
+        if not response_str: print_error(f"AI 回應為空。收到的內容: {output}")
+        match = re.search(r'```json\n(.*?)\n```', response_str, re.DOTALL)
+        json_str = match.group(1).strip() if match else response_str
+        return json.loads(json_str)
+    except (json.JSONDecodeError, AttributeError): print_error(f"{mode} 階段輸出不是有效的 JSON。收到的內容: {output}")
+
+def get_config(args: argparse.Namespace) -> dict:
+    cfg = yaml.safe_load(CONFIG_PATH.read_text(encoding="utf-8")) if CONFIG_PATH.exists() else {}
+    # Command-line args (from UI) override config.yaml
+    cli_args = {k: v for k, v in vars(args).items() if v is not None}
+    cfg.update(cli_args)
+    return cfg
 
 def main():
-    parser = argparse.ArgumentParser(
-        description="PPTPlaner Orchestrator (Windows-friendly)"
-    )
-    parser.add_argument("--source", help="覆寫 config.yaml 的 source_file")
-    parser.add_argument("--agent", help="覆寫 config.yaml 的 agent")
-    parser.add_argument("--force", action="store_true", help="允許覆寫既有檔案")
-    parser.add_argument("--plan-only", action="store_true", help="只做切頁規劃（PLAN）")
+    parser = argparse.ArgumentParser(description="PPTPlaner Orchestrator")
+    # Use dest='source_file' to match the key in config.yaml
+    parser.add_argument("--source", dest="source_file", help="Source file to process")
+    parser.add_argument("--agent", dest="agent", help="AI agent to use (e.g., gemini)")
+    mode_group = parser.add_mutually_exclusive_group()
+    mode_group.add_argument("--slides-only", action="store_true")
+    mode_group.add_argument("--memos-only", action="store_true")
+    mode_group.add_argument("--plan-from-slides", dest="plan_from_slides", help="AI-plan from a slide file, then generate memos")
     args = parser.parse_args()
 
-    if not CFG.exists():
-        fail(f"找不到設定檔：{CFG}")
+    cfg = get_config(args)
+    
+    if not cfg.get("source_file"):
+        print_error("未提供來源檔案。請在 UI 中選擇或在 config.yaml 中設定。")
 
-    cfg = read_yaml(CFG)
+    print_header("Phase 0: Initializing Run")
+    source_path = Path(cfg["source_file"]);
+    if not source_path.is_absolute(): source_path = ROOT / source_path
+    if not source_path.exists(): print_error(f"來源檔案不存在: {source_path}")
 
-    # 讀 config
-    source_file = args.source or cfg.get("source_file")
-    agent = (args.agent or cfg.get("agent") or "").lower().strip()
-    notes_locale = cfg.get("notes_locale", "zh-TW")
-    preserve_en = bool(cfg.get("preserve_english_terms", True))
-    split_strategy = cfg.get("split_strategy", "semantic")
-    max_pages = int(cfg.get("max_pages_per_file", 10))
-    memo_per_page = bool(cfg.get("memo_per_page", True))
-    memo_tmin = int(cfg.get("memo_target_time_min", 2))
-    memo_tmax = int(cfg.get("memo_target_time_max", 3))
+    title_output = run_agent(cfg["agent"], "SUMMARIZE_TITLE", {"source_file_path": str(source_path)})
+    run_title = parse_ai_json_output(title_output, "SUMMARIZE_TITLE").get("title", "Untitled_Run")
+    sanitized_title = re.sub(r'[^a-zA-Z0-9_-]', '', run_title.replace(" ", "_"))
+    output_dir = OUTPUT_ROOT / f"{datetime.now().strftime('%Y%m%d_%H%M%S')}_{sanitized_title}"
+    output_dir.mkdir(parents=True)
+    print_success(f"Created unique output directory: {output_dir.relative_to(ROOT)}")
 
-    slides_dir = cfg.get("slides_dir", "slides")
-    notes_dir = cfg.get("notes_dir", "notes")
-    diagrams_dir = cfg.get("diagrams_dir", "diagrams")
-    guide_file = cfg.get("guide_file", "指引.html")
+    slides_dir = output_dir / "slides"; notes_dir = output_dir / "notes"; guide_file = output_dir / "guide.html"
+    plan_json_path = output_dir / ".plan.json"
 
-    slides_naming = cfg.get("slides_naming", "slides/{page}_{topic}.md")
-    notes_naming = cfg.get("notes_naming", "notes/note-{page}_{topic}-zh.md")
-
-    build_guide = bool(cfg.get("build_guide", True))
-    auto_open_guide = bool(cfg.get("auto_open_guide", True))
-
-    validate_alignment = bool(cfg.get("validate_alignment", True))
-    validate_keywords = bool(cfg.get("validate_keywords", True))
-    validate_time = bool(cfg.get("validate_time_estimate", True))
-
-    dual_lang = bool(cfg.get("dual_language", False))
-    zip_out = bool(cfg.get("zip_output", True))
-    zip_name = cfg.get("zip_name", "PPTPlaner_Package.zip")
-
-    tone = cfg.get("tone", "academic-friendly")
-
-    if not source_file:
-        fail("config.yaml 未指定 source_file，或未以 --source 覆寫。")
-
-    source_path = ROOT / source_file
-    if not source_path.exists():
-        fail(f"找不到來源檔案：{source_path}")
-
-    # 確保資料夾
-    (ROOT / slides_dir).mkdir(parents=True, exist_ok=True)
-    (ROOT / notes_dir).mkdir(parents=True, exist_ok=True)
-    (ROOT / diagrams_dir).mkdir(parents=True, exist_ok=True)
-
-    log(f"讀取設定：{CFG}")
-    print(f"  Source: {source_file}")
-    print(f"  Agent : {agent}")
-    print(f"  Strategy: {split_strategy} | Memo per page: {memo_per_page}")
-
-    # 基本指令提示（可選）
-    for needed in []:  # 若要檢查特定 CLI 指令，填在這行
-        ensure_cmd(needed)
-
-    # 1) PLAN
-    log("規劃切頁（PLAN）…")
-    if args.force or not PLAN_JSON.exists():
-        out = run_agent(agent, "PLAN", {
-            "source_file": str(source_path),
-            "split_strategy": split_strategy,
-            "max_pages": str(max_pages),
-            "notes_locale": notes_locale,
-            "memo_per_page": "true" if memo_per_page else "false",
-            "preserve_english_terms": "true" if preserve_en else "false",
-            "tone": tone
-        })
-        try:
-            plan = json.loads(out)
-        except json.JSONDecodeError:
-            fail("PLAN 階段輸出不是有效的 JSON。請檢查 AGENTS.md 的 PLAN 規格。")
-        with open(PLAN_JSON, "w", encoding="utf-8") as f:
-            json.dump(plan, f, ensure_ascii=False, indent=2)
-        good(f"已產生切頁計畫：{PLAN_JSON}")
+    if args.plan_from_slides:
+        print_header("Phase 1: AI Planning from Slides File")
+        slide_file_path = Path(args.plan_from_slides)
+        if not slide_file_path.is_absolute(): slide_file_path = ROOT / slide_file_path
+        if not slide_file_path.exists(): print_error(f"簡報檔案不存在: {slide_file_path}")
+        slide_content = slide_file_path.read_text(encoding="utf-8")
+        plan = parse_ai_json_output(run_agent(cfg["agent"], "PLAN_FROM_SLIDES", {"slide_file_content": slide_content, "source_file_path": str(source_path)}), "PLAN_FROM_SLIDES")
+        pages = plan.get("pages", [])
+        if not pages: print_error("AI 未能從簡報檔案生成任何頁面計畫。")
+        print_info(f"AI is planning {len(pages)} slides... Writing to '{slides_dir.name}' folder.")
+        slides_dir.mkdir(exist_ok=True)
+        for item in pages: 
+            slide_path = slides_dir / f'{item["page"]}_{item["topic"]}.md'
+            slide_path.write_text(item["content"], encoding="utf-8")
+        args.memos_only = True
     else:
-        with open(PLAN_JSON, "r", encoding="utf-8") as f:
-            plan = json.load(f)
-        print("  沿用現有 .plan.json（--force 可重建）")
+        print_header("Phase 1: AI Planning from Source Document")
+        plan = parse_ai_json_output(run_agent(cfg["agent"], "PLAN", {"source_file_path": str(source_path)}), "PLAN")
+        pages = plan.get("pages", [])
 
-    pages = plan.get("pages") or []
-    if not pages:
-        fail("PLAN 無任何頁面（pages[] 為空）。")
-
-    if args.plan_only:
-        good(f"僅完成 PLAN。頁數：{len(pages)}")
-        return
-
-    # 2) 逐頁產出
-    log(f"開始逐頁產出（共 {len(pages)} 頁）…")
-    for item in pages:
-        page = f'{int(item.get("page")):02d}' if str(item.get("page", "")).isdigit() else str(item.get("page"))
-        topic = (item.get("topic") or "topic").strip().replace(" ", "_")
-
-        slide_rel = slides_naming.replace("{page}", page).replace("{topic}", topic)
-        note_rel  = notes_naming.replace("{page}", page).replace("{topic}", topic)
-
-        slide_abs = ROOT / slide_rel
-        note_abs  = ROOT / note_rel
-
-        slide_abs.parent.mkdir(parents=True, exist_ok=True)
-        note_abs.parent.mkdir(parents=True, exist_ok=True)
-
-        print(f"— Page {page} · {topic}")
-
-        # SLIDE
-        if args.force or not slide_abs.exists():
-            slide_out = run_agent(agent, "SLIDE", {
-                "source_file": str(source_path),
-                "page": page,
-                "topic": topic,
-                "max_pages": str(max_pages),
-                "notes_locale": notes_locale
-            })
-            slide_abs.write_text(slide_out, encoding="utf-8")
-            good(f"Slide 產出：{slide_rel}")
-        else:
-            print(f"  (略過，已存在) {slide_rel}")
-
-        # MEMO (zh)
-        if memo_per_page:
-            if args.force or not note_abs.exists():
-                memo_out = run_agent(agent, "MEMO", {
-                    "source_file": str(source_path),
-                    "page": page,
-                    "topic": topic,
-                    "notes_locale": notes_locale,
-                    "preserve_english_terms": "true" if preserve_en else "false",
-                    "tone": tone,
-                    "memo_time_min": str(memo_tmin),
-                    "memo_time_max": str(memo_tmax)
-                })
-                note_abs.write_text(memo_out, encoding="utf-8")
-                good(f"Note 產出：{note_rel}")
+    if not args.slides_only:
+        print_header(f"Phase 2: Generating Slides & Memos ({len(pages)} pages)")
+        slides_dir.mkdir(exist_ok=True); notes_dir.mkdir(exist_ok=True)
+        for item in pages:
+            page, topic = item["page"], item["topic"]
+            slide_path = slides_dir / f"{page}_{topic}.md"
+            if not slide_path.exists():
+                slide_content = run_agent(cfg["agent"], "SLIDE", {"source_file_path": str(source_path), "page": page, "topic": topic})
+                slide_path.write_text(slide_content, encoding="utf-8")
             else:
-                print(f"  (略過，已存在) {note_rel}")
+                slide_content = slide_path.read_text(encoding="utf-8")
+            if args.memos_only:
+                note_path = notes_dir / f"note-{page}_{topic}-zh.md"
+                memo_content = run_agent(cfg["agent"], "MEMO", {"source_file_path": str(source_path), "slide_content": slide_content, "page": page, "topic": topic})
+                note_path.write_text(memo_content, encoding="utf-8")
+                print_success(f"  Memo saved for page {page}")
 
-        # MEMO (en, optional)
-        if dual_lang:
-            note_en_rel = note_rel.replace("-zh.md", "-en.md")
-            note_en_abs = ROOT / note_en_rel
-            if args.force or not note_en_abs.exists():
-                memo_en_out = run_agent(agent, "MEMO_EN", {
-                    "source_file": str(source_path),
-                    "page": page,
-                    "topic": topic,
-                    "notes_locale": "en",
-                    "preserve_english_terms": "true",
-                    "tone": "academic",
-                    "memo_time_min": str(memo_tmin),
-                    "memo_time_max": str(memo_tmax)
-                })
-                note_en_abs.write_text(memo_en_out, encoding="utf-8")
-                good(f"Note(EN) 產出：{note_en_rel}")
-
-    # 3) 驗證
-    if validate_alignment or validate_keywords or validate_time:
-        log("執行驗證（scripts/validate.py）…")
-        val_script = ROOT / "scripts" / "validate.py"
-        if not val_script.exists():
-            print("  （提示）validate.py 尚未建立，本步驟將略過。")
-        else:
-            cmd = [
-                sys.executable, str(val_script),
-                "--slides-dir", str(ROOT / slides_dir),
-                "--notes-dir", str(ROOT / notes_dir),
-                "--check-alignment", str(validate_alignment).lower(),
-                "--check-keywords", str(validate_keywords).lower(),
-                "--check-time", str(validate_time).lower(),
-                "--time-min", str(memo_tmin),
-                "--time-max", str(memo_tmax)
-            ]
-            run_checked(cmd)
-            good("驗證通過。")
-
-    # 4) 產出指引
-    if build_guide:
-        log("產出指引頁（scripts/build_guide.py）…")
-        guide_script = ROOT / "scripts" / "build_guide.py"
-        if not guide_script.exists():
-            print("  （提示）build_guide.py 尚未建立，本步驟將略過。")
-        else:
-            cmd = [
-                sys.executable, str(guide_script),
-                "--slides-dir", str(ROOT / slides_dir),
-                "--notes-dir", str(ROOT / notes_dir),
-                "--output", str(ROOT / guide_file)
-            ]
-            run_checked(cmd)
-            good(f"已產出：{guide_file}")
-
-            if auto_open_guide:
-                try:
-                    if sys.platform.startswith("win"):
-                        os.startfile(str(ROOT / guide_file))  # type: ignore[attr-defined]
-                    elif sys.platform == "darwin":
-                        run_checked(["open", str(ROOT / guide_file)])
-                    else:
-                        run_checked(["xdg-open", str(ROOT / guide_file)])
-                except Exception:
-                    pass
-
-    # 5) 打包
-    if zip_out:
-        log("打包交付…")
-        import zipfile
-        with zipfile.ZipFile(ROOT / zip_name, "w", compression=zipfile.ZIP_DEFLATED) as zf:
-            for rel in (slides_dir, notes_dir, diagrams_dir, guide_file):
-                p = ROOT / rel
-                if p.is_dir():
-                    for fp in p.rglob("*"):
-                        if fp.is_file():
-                            zf.write(fp, fp.relative_to(ROOT))
-                elif p.is_file():
-                    zf.write(p, p.relative_to(ROOT))
-        good(f"打包完成：{zip_name}")
-
-    print()
-    good(f"全部完成！請開啟 {guide_file} 將講稿貼到簡報 Presenter Notes。")
+    print_header("Phase 3: Finalizing Output")
+    # The build_guide.py script was not fully implemented, so we call it with basic args
+    build_script_path = ROOT / "scripts" / "build_guide.py"
+    if build_script_path.exists():
+        run_command([sys.executable, str(build_script_path), f"--output-dir={output_dir}"])
+        print_success(f"Guide file created at: {guide_file}")
+        webbrowser.open(guide_file.as_uri())
+    
+    # Auto-open the output directory
+    os.startfile(output_dir)
+    print_header("Run Complete!")
 
 if __name__ == "__main__":
     main()

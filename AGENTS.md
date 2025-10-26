@@ -6,26 +6,9 @@
 > - `slides/`：**每檔 ≤10 頁** 的 Markdown 投影片段  
 > - `notes/`：**逐頁備忘稿**（繁體中文，**保留英文術語原文**）  
 > - `diagrams/`：可選的 Mermaid 流程圖（`.mmd`）
->
-> ✅ 檔名完全**不受限制**：`Chapter05.md`、`Thesis_Method.md`、`FieldReport.md`、`Interview.txt`… 皆可作為輸入  
-> ✅ 本 SPEC 與 `config.yaml`、`scripts/orchestrate.py`、`scripts/validate.py`、`scripts/build_guide.py` 完整對齊
 
 [← 使用教學（docs/USAGE_zh-TW.md）](./docs/USAGE_zh-TW.md)  
 [← 返回主頁（README.md）](./README.md)
-
----
-
-## 0) Global Guidelines（共同原則）
-
-- **輸入**：`source_file` 指向本地檔案（Markdown/純文字皆可）  
-- **語言**：所有 *memos* 輸出採**臺灣繁體中文**，且**保留英文關鍵詞原文**，寫法示例：  
-  - *Encoding Specificity Principle*（編碼特異性原則）  
-  - *Signal Detection Theory*（訊號偵測理論）  
-- **逐頁工作流**：**嚴格一頁一備忘稿**（Page-by-Page Memos）。任何總結性長文都必須拆成每頁對應的內容。  
-- **Taiwan Context**：遇到司法/警政/法院情境，優先補充臺灣脈絡（例如列隊辨認須包含 *not present option*）。  
-- **準確性**：嚴禁虛構研究／年份／數據；原文未載者不得杜撰。  
-- **時間**：每頁 memo 口述長度目標 `2–3 分鐘`（以 `memo_time_min/max` 控制）。  
-- **檔案分段**：投影片平台常見限制（如 Gamma）建議**每檔 ≤10 頁**；整份課程請切為多檔上傳。  
 
 ---
 
@@ -33,228 +16,92 @@
 ### 切頁規劃（輸出 JSON）
 
 **目的**：將整份 source text 規劃成若干「頁」（page），每頁一個簡短主題 `topic`。  
-**輸入變數**（由 orchestrator 傳入）：
-- `source_file`：原始文檔的實體路徑  
-- `split_strategy`：`semantic`（語意段落）或 `fixed`（固定行數）  
-- `max_pages`：每個輸出檔 **≤10** 頁  
-- `notes_locale`：通常 `zh-TW`  
-- `memo_per_page`：`true/false`  
-- `preserve_english_terms`：`true/false`  
-- `tone`：`academic-friendly` / `academic` / `teaching` …
-
 **輸出**：純 JSON（不得混雜其他文字），格式：
 ```json
 {
   "pages": [
     { "page": "01", "topic": "Intro" },
-    { "page": "02", "topic": "Encoding" },
-    { "page": "03", "topic": "Retrieval" }
+    { "page": "02", "topic": "Encoding" }
   ]
 }
-````
-
-**規劃原則**
-
-* `semantic`：以概念小節為單位；每頁**單一焦點**（定義 / 實驗 / 誤差 / 法律應用 / 小結）
-* 頁碼使用兩位數字字串（`01`、`02`…），`topic` 以 `[A-Za-z0-9_-]` 命名（空白改 `_`）
-* 節奏建議：定義 → 經典研究（作者＋年份）→ 誤差與偏誤 → 法律/實務應用（Taiwan）→ 小結/檢核
-
-**呼叫範例**
-
-```bash
-# PLAN
-codex run -p PLAN -f AGENTS.md \
-  --vars source_file=/abs/path/SourceText.md \
-  --vars split_strategy=semantic \
-  --vars max_pages=10 \
-  --vars notes_locale=zh-TW \
-  --vars memo_per_page=true \
-  --vars preserve_english_terms=true \
-  --vars tone=academic-friendly
 ```
 
 ---
 
 ## [SLIDE]
-
 ### 生成單頁投影片（Markdown）
 
 **目的**：依 `PLAN` 的 `page` 與 `topic`，輸出**單頁**投影片內容（Markdown）。
-**輸入變數**：
-
-* `source_file`、`page`、`topic`
-* `max_pages`、`notes_locale`（參考即可）
-
 **輸出**：單頁 Markdown（僅此頁；勿含前後頁）
-
-**內容規範**
-
-* 一行標題（可含英文術語＋中文）
-* 3–6 條 bullets，**格式固定**：
-
-  * `Term · 中文解釋`（英文術語置左，繁中說明置後）
-* 可加 1–2 條 **Forensic/Law Implication**，強化實務連結
-* **避免**長段落；詳述交由 `MEMO`
-
-**範例**
-
-```md
-# Encoding Specificity（編碼特異性）
-
-- Cue overlap（線索重疊）· 檢索成功取決於與當時編碼線索的相似度
-- Context reinstatement（情境復現）· 返還現場情境可提升回想
-- Mismatch risk（線索不匹配）· 線索偏差會降低準確率
-
-**Forensic Implication**
-- 實務：訪談先做 context reinstatement，再進入細節追問
-```
-
-**呼叫範例**
-
-```bash
-# SLIDE
-codex run -p SLIDE -f AGENTS.md \
-  --vars source_file=/abs/path/SourceText.md \
-  --vars page=07 \
-  --vars topic=Retrieval \
-  --vars max_pages=10 \
-  --vars notes_locale=zh-TW
-```
 
 ---
 
 ## [MEMO]
+### 生成以學習為核心的逐頁備忘稿（繁體中文，保留英文術語）
 
-### 生成單頁繁體中文備忘稿（純文字，保留英文術語）
+**目的**：以傳入的 `slide_content` 為綱要，扮演「老師」與「教練」的角色，深度挖掘 `source_file` 的精髓，生成一份**以引導使用者「完整學習」原文為核心目標**的逐頁備忘稿。
 
-**目的**：針對同一 `page`，輸出**可直接貼入 Presenter Notes 的純文字**備忘稿（無 Markdown）。
-**輸入變數**：
+**寫作哲學 (Writing Philosophy)**
 
-* `source_file`、`page`、`topic`
-* `notes_locale`（`zh-TW`）、`preserve_english_terms`（`true/false`）
-* `tone`、`memo_time_min`、`memo_time_max`
+*   **你是老師，不是摘要機**：你的目標是「教會」講者，而不只是總結。
+*   **備忘稿是學習的主體，簡報是輔助**：講稿內容必須遠比簡報豐富。
+*   **創造連貫的敘事**：在頁面之間建立清晰的邏輯聯繫。
+*   **確保可溯源性 (Traceability)**：備忘稿中闡述的核心概念，必須讓學習者能對應回原文。
 
-**輸出**：**純文字**，無 Markdown、無序號
+**必要段落（順序固定）**
 
-**必要段落（順序固定；每段 1–3 句）**
-
-1. **本頁摘要（Slide Recap）**：10–25 秒
-2. **核心概念與實驗**：對應英文原文（*Term*（中文）），含研究者與年份（若原文有）
-3. **法律／實務應用（Taiwan Context）**：1–2 個具體指引或警示
-4. **提問或轉場（Bridge）**：自然引導至下一頁
-
-**風格**：清楚、可口述；**必含英文字母**（驗證保留原文）
-
-**短例**
-
-```
-本頁先抓重點：*Encoding Specificity Principle*（編碼特異性原則）強調檢索線索需貼近當時的編碼脈絡。情境越像，回想越穩定。
-核心概念與實驗：實證研究顯示，在相同環境或線索下檢索，正確率顯著提升，context reinstatement（情境復現）因此被用作訪談技巧。
-臺灣實務面：偵訊時先讓證人復現環境線索（燈光、天氣、聲音），再追問細節；避免丟不相干的提示，以免引發錯誤回憶。
-下一頁我們看線索偏離時，回想如何被系統性扭曲。
-```
-
-**呼叫範例**
-
-```bash
-# MEMO
-codex run -p MEMO -f AGENTS.md \
-  --vars source_file=/abs/path/SourceText.md \
-  --vars page=07 \
-  --vars topic=Retrieval \
-  --vars notes_locale=zh-TW \
-  --vars preserve_english_terms=true \
-  --vars tone=academic-friendly \
-  --vars memo_time_min=2 \
-  --vars memo_time_max=3
-```
+1.  **本頁摘要（Slide Recap）**：用 1-2 句話總結 `slide_content` 的核心要點。
+2.  **核心概念與深度學習 (含溯源)**：針對 `slide_content` 上的每個要點，從 `source_file` 中找出其背後的「為何如此」、經典實驗、理論細節或故事脈絡。在闡述完一個關鍵概念後，**必須**加上來源標註，例如 `(Source: Page 42)` 或 `(Source: Eyewitness Memory, Chapter 5)`，以利學習者對照原文。
+3.  **法律／實務應用（Taiwan Context）**：補充與 `slide_content` 要點相關的在地化脈絡或應用。
+4.  **承先啟後與轉場（Bridge）**：明確地將本頁核心概念與「下一頁」的主題聯繫起來。
 
 ---
 
-## [MEMO_EN]（可選）
+## [PLAN_FROM_SLIDES] (AI智慧分頁)
+### 從簡報檔案內容生成頁面規劃
 
-### 生成英文講稿（純文字）
+**目的**：接收一份純文字的簡報檔案內容 (`slide_file_content`)，由 AI 自行「智慧解讀」其中的分頁結構，並為每一頁生成一個簡潔的 `topic`。
 
-**輸入變數** 同 `MEMO`，但 `notes_locale="en"`。
-**輸出**：英文純文字；如需可在括號保留關鍵中文術語。
-**使用時機**：`config.yaml` 設定 `dual_language: true`
+**CRITICAL REQUIREMENT**: 您的輸出是一個 JSON 物件。在 `pages` 陣列中的**每一個**物件，都**必須**包含三個鍵：`page` (字串)、`topic` (字串)、和 `content` (字串)。`content` 鍵是**絕對必要**的，其值為該頁投影片的完整 Markdown 內容。
 
-**呼叫範例**
-
-```bash
-# MEMO_EN
-codex run -p MEMO_EN -f AGENTS.md \
-  --vars source_file=/abs/path/SourceText.md \
-  --vars page=07 \
-  --vars topic=Retrieval \
-  --vars notes_locale=en \
-  --vars preserve_english_terms=true \
-  --vars tone=academic \
-  --vars memo_time_min=2 \
-  --vars memo_time_max=3
+**輸出**：純 JSON（不得混雜其他文字）。格式**必須**如下，每個頁面物件都**必須**包含 `content` 鍵：
+```json
+{
+  "pages": [
+    { 
+      "page": "01", 
+      "topic": "AI_Generated_Topic_1", 
+      "content": "Content of slide 1..."
+    },
+    { 
+      "page": "02", 
+      "topic": "AI_Generated_Topic_2", 
+      "content": "Content of slide 2..."
+    }
+  ]
+}
 ```
 
 ---
 
-## [REVIEW]（預留）
+## [SUMMARIZE_TITLE]
+### 為專案生成一個簡短的英文標題
 
-### 自動審稿模式（可選擇不啟用）
+**目的**：讀取 `source_file` 的內容，為其生成一個非常簡短的、適合用作資料夾名稱的英文標題。
 
-**用途**：檢查 slides / notes 的一致性與內容偏差，提供改進建議（純文字或 JSON）。
-**輸入**：`slide_path`、`note_path`
-**輸出**：建議清單（JSON 或純文字）
+**寫作哲學**：
 
-> 註：目前 orchestrator 未必呼叫此模式；保留擴充彈性。
+*   **極度簡潔**：長度嚴格限制在 3 到 5 個單詞之間。
+*   **英文輸出**：必須使用英文。
+*   **移除特殊字元**：標題中只能包含字母、數字、底線或連字號。
+*   **高鑑別度**：標題需能反映文章核心主題。
 
----
-
-## 產出／命名（由 orchestrator 控制）
-
-* 檔名樣式可在 `config.yaml` 設定：
-
-  * `slides_naming: "slides/{page}_{topic}.md"`
-  * `notes_naming:  "notes/note-{page}_{topic}-zh.md"`
-* 頁碼固定兩位數字字串（`01`、`02`…）；`topic` 僅允許 `[A-Za-z0-9_-]`（空白改 `_`）
-
----
-
-## Validator 對齊規則（與 `scripts/validate.py` 一致）
-
-* **對齊**：每個 `slides/{page}_*.md` 必須有對應 `notes/note-{page}_*-zh.md`
-* **英文術語**：備忘稿必須含英文字母（A–Z/a–z）以驗證保留原文
-* **口述時間**：估算應落在 `memo_time_min`–`memo_time_max` 分鐘（預設 `2–3`）；過長建議拆分或濃縮
-
----
-
-## Mermaid（可選，供 diagrams/ 抽出）
-
-若頁面涉及流程/結構，你可以在 **SLIDE** 文末附上 1 段 Mermaid 程式碼（fenced code block）：
-
-```mermaid
-flowchart LR
-  Perception --> Encoding --> Storage --> Retrieval
-  Retrieval -->|Reconsolidation| Storage
+**輸出**：一個包含 `title` 鍵的 JSON 物件。例如：
+```json
+{
+  "title": "Boston_Bombing_Analysis"
+}
 ```
-
-> orchestrator 可選擇將這段抽出存成 `diagrams/*.mmd`；若未支援則忽略。
-
----
-
-## 與 orchestrator 的介面契約（Contract）
-
-* orchestrator 以 `PLAN → SLIDE → MEMO（→ MEMO_EN）` 的順序驅動
-* `PLAN` **只輸出 JSON**；`SLIDE` 與 `MEMO` **只輸出該頁的內容**
-* 檔名與寫檔由 orchestrator 實作；**Agent 僅輸出到 STDOUT，不自行寫檔**
-
----
-
-## 自我檢核（Agent 內部自查，勿輸出）
-
-1. MEMO 是否保留英文術語？（英文字母檢查）
-2. MEMO 長度是否對應 2–3 分鐘？
-3. 是否補充臺灣實務脈絡（若為法律/偵查應用頁）？
-4. 是否用轉場句收尾？
-5. 是否只輸出「本頁」內容？
 
 ---
 
