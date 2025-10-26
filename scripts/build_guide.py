@@ -10,9 +10,9 @@ try:
 except ImportError:
     JINJA_AVAILABLE = False
 
-def render_html(pages):
+def render_html(pages, templates_dir):
     if not JINJA_AVAILABLE:
-        print("[Warning] Jinja2 not found. Using basic HTML rendering.")
+        print("[Warning] Jinja2 not found. Using basic HTML rendering.", flush=True)
         html = "<html><head><title>Guide</title></head><body>"
         for page in pages:
             html += f"<h1>Slide {page['id']}</h1><pre>{page['slide_content']}</pre>"
@@ -20,7 +20,8 @@ def render_html(pages):
         html += "</body></html>"
         return html
 
-    env = Environment(loader=FileSystemLoader('templates', encoding='utf-8'))
+    # Look for templates in the specified directory
+    env = Environment(loader=FileSystemLoader(templates_dir, encoding='utf-8'))
     template = env.get_template("guide.html.j2")
     return template.render(pages=pages)
 
@@ -29,41 +30,53 @@ def main():
     parser.add_argument("--output-dir", required=True, help="The unique output directory for the run.")
     args = parser.parse_args()
 
-    output_dir = Path(args.output_dir)
-    slides_dir = output_dir / "slides"
-    notes_dir = output_dir / "notes"
-    output_path = output_dir / "guide.html"
+    try:
+        output_dir = Path(args.output_dir)
+        slides_dir = output_dir / "slides"
+        notes_dir = output_dir / "notes"
+        output_path = output_dir / "guide.html"
+        templates_dir = Path(__file__).resolve().parents[1] / "templates"
 
-    print(f"Building guide for directory: {output_dir}")
+        print(f"Building guide for directory: {output_dir}", flush=True)
 
-    slide_files = sorted([f for f in os.listdir(slides_dir) if f.endswith('.md')])
-    
-    pages = []
-    for slide_file in slide_files:
-        try:
-            base_name = slide_file.rsplit('.', 1)[0]
-            slide_id = base_name.split('_')[0]
-            # Correctly construct the note file name including the language suffix
-            note_file_name = f"note-{base_name}-zh.md"
-            
-            slide_path = slides_dir / slide_file
-            note_path = notes_dir / note_file_name
+        if not slides_dir.exists() or not notes_dir.exists():
+            print(f"Build skipped: '{slides_dir.name}' or '{notes_dir.name}' directory not found in {output_dir}.", flush=True)
+            sys.exit(0) # Exit gracefully, not an error
 
-            slide_content = slide_path.read_text(encoding="utf-8") if slide_path.exists() else "[Slide not found]"
-            note_content = note_path.read_text(encoding="utf-8") if note_path.exists() else "[Note not found]"
+        slide_files = sorted([f for f in os.listdir(slides_dir) if f.endswith('.md')])
+        
+        pages = []
+        for slide_file in slide_files:
+            try:
+                base_name = slide_file.rsplit('.', 1)[0]
+                slide_id = base_name.split('_')[0]
+                note_file_name = f"note-{base_name}-zh.md"
+                
+                slide_path = slides_dir / slide_file
+                note_path = notes_dir / note_file_name
 
-            pages.append({
-                "id": slide_id,
-                "slide_content": slide_content,
-                "note_content": note_content
-            })
-        except IndexError:
-            print(f"[Warning] Could not parse filename: {slide_file}")
+                slide_content = slide_path.read_text(encoding="utf-8") if slide_path.exists() else "[Slide not found]"
+                note_content = note_path.read_text(encoding="utf-8") if note_path.exists() else "[Note not found]"
 
-    html_content = render_html(pages)
-    output_path = Path("guide.html")
-    output_path.write_text(html_content, encoding="utf-8")
-    print(f"Successfully created {output_path}")
+                pages.append({
+                    "id": slide_id,
+                    "slide_content": slide_content,
+                    "note_content": note_content
+                })
+            except IndexError:
+                print(f"[Warning] Could not parse filename: {slide_file}", flush=True)
+
+        if not pages:
+            print("[Warning] No pages were processed to build the guide.", flush=True)
+            return
+
+        html_content = render_html(pages, templates_dir)
+        output_path.write_text(html_content, encoding="utf-8")
+        # This success message is now printed by the orchestrator
+
+    except Exception as e:
+        print(f"[ERROR] An unexpected error occurred in build_guide.py: {e}", file=sys.stderr, flush=True)
+        sys.exit(1)
 
 if __name__ == "__main__":
     main()
