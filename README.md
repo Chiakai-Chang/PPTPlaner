@@ -41,7 +41,6 @@
 *   **如何安裝**：
     1.  前往 [Python 官方網站](https://www.python.org/downloads/) 下載最新版本。
     2.  執行安裝程式。在安裝的第一個畫面，**請務必勾選 `Add Python to PATH`** 這個選項，這非常重要！
-        > ![Add Python to PATH](https://i.imgur.com/s2r5Y8e.png)
 
 ### 步驟 2：安裝 Node.js (包含 npm)
 
@@ -135,6 +134,6 @@ PPTPlaner/
 *   **Original Creator**: Chiakai Chang
 *   **Contact**:
     *   **Email**: [lotifv@gmail.com](mailto:lotifv@gmail.com)
-    *   **LinkedIn**: [in/chiakai-chang-htciu](https://www.linkedin.com/in/chiakai-chang-htciu)
-    *   **GitHub**: [Chiakai-Chang/PPTPlaner](https://github.com/Chiakai-Chang/PPTPlaner)
+    *   **LinkedIn**: [chiakai-chang-htciu](https://www.linkedin.com/in/chiakai-chang-htciu)
+    *   **GitHub**: [Chiakai-Chang](https://github.com/Chiakai-Chang)
 *   **Inspiration**: Inspired by the need to prepare for the *Eyewitness Memory* chapter in a Forensic Psychology course at Central Police University.
