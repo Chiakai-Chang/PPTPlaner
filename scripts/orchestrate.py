@@ -25,6 +25,11 @@ def print_error(msg: str, exit_code: int = 1):
         print(f"  ✗ [ERROR] Failed to write to error.log: {e}", file=sys.stderr, flush=True)
     if exit_code is not None: sys.exit(exit_code)
 
+def sanitize_filename(name: str) -> str:
+    """Removes characters that are invalid in Windows filenames and replaces spaces."""
+    name = name.replace(' ', '_')
+    return re.sub(r'[\\/*?:"<>|]', '', name)
+
 # --- AI & Command Execution ---
 _agent_specs_cache = None
 def parse_agent_specs():
@@ -135,6 +140,7 @@ def main():
         slide_content = slide_file_path.read_text(encoding="utf-8")
         plan = parse_ai_json_output(run_agent(cfg["agent"], "PLAN_FROM_SLIDES", {"slide_file_content": slide_content, "source_file_path": str(source_path)}), "PLAN_FROM_SLIDES")
         pages = plan.get("pages", [])
+        for page_item in pages: page_item["topic"] = sanitize_filename(page_item["topic"])
         if not pages: print_error("AI 未能從簡報檔案生成任何頁面計畫。")
         print_info(f"AI is planning {len(pages)} slides... Writing to '{slides_dir.name}' folder.")
         slides_dir.mkdir(exist_ok=True)
@@ -146,10 +152,23 @@ def main():
         print_header("Phase 1: AI Planning from Source Document")
         plan = parse_ai_json_output(run_agent(cfg["agent"], "PLAN", {"source_file_path": str(source_path)}), "PLAN")
         pages = plan.get("pages", [])
+        for page_item in pages: page_item["topic"] = sanitize_filename(page_item["topic"])
 
     if not args.slides_only:
         print_header(f"Phase 2: Generating Slides & Memos ({len(pages)} pages)")
         slides_dir.mkdir(exist_ok=True); notes_dir.mkdir(exist_ok=True)
+
+        # Aggregate all slide content for full presentation context
+        full_slides_content = ""
+        if cfg.get("memo_per_page", True):
+            print_info("Aggregating all slides for full context...")
+            for item in pages:
+                slide_path = slides_dir / f'{item["page"]}_{item["topic"]}.md'
+                if slide_path.exists():
+                    full_slides_content += f'\n\n---\n[Slide {item["page"]}: {item["topic"]}]\n---\n\n'
+                    full_slides_content += slide_path.read_text(encoding="utf-8")
+            print_success("Full context aggregated.")
+
         for item in pages:
             page, topic = item["page"], item["topic"]
             slide_path = slides_dir / f"{page}_{topic}.md"
@@ -158,9 +177,24 @@ def main():
                 slide_path.write_text(slide_content, encoding="utf-8")
             else:
                 slide_content = slide_path.read_text(encoding="utf-8")
-            if args.memos_only:
+
+            # The original logic `if args.memos_only:` was buggy.
+            # This corrected logic generates memos if they are enabled in config,
+            # covering both "generate from source" and "generate from slides" cases.
+            if cfg.get("memo_per_page", True):
                 note_path = notes_dir / f"note-{page}_{topic}-zh.md"
-                memo_content = run_agent(cfg["agent"], "MEMO", {"source_file_path": str(source_path), "slide_content": slide_content, "page": page, "topic": topic})
+                
+                memo_vars = {
+                    "source_file_path": str(source_path),
+                    "full_slides_content": full_slides_content,
+                    "current_slide_content": slide_content,
+                    "page": page,
+                    "topic": topic
+                }
+                if cfg.get("custom_instruction"):
+                    memo_vars["custom_instruction"] = cfg["custom_instruction"]
+
+                memo_content = run_agent(cfg["agent"], "MEMO", memo_vars)
                 note_path.write_text(memo_content, encoding="utf-8")
                 print_success(f"  Memo saved for page {page}")
 
