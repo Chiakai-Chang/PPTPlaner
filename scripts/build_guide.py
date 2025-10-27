@@ -2,8 +2,8 @@ import os
 import sys
 import argparse
 from pathlib import Path
+from markdown_it import MarkdownIt
 
-# Add a simple way to use Jinja2 if available, otherwise use basic string formatting
 try:
     from jinja2 import Environment, FileSystemLoader
     JINJA_AVAILABLE = True
@@ -16,11 +16,10 @@ def render_html(pages, templates_dir):
         html = "<html><head><title>Guide</title></head><body>"
         for page in pages:
             html += f"<h1>Slide {page['id']}</h1><pre>{page['slide_content']}</pre>"
-            html += f"<h2>Notes</h2><pre>{page['note_content']}</pre><hr>"
+            html += f"<h2>Notes</h2><pre>{page['note_content']['raw']}</pre><hr>"
         html += "</body></html>"
         return html
 
-    # Look for templates in the specified directory
     env = Environment(loader=FileSystemLoader(templates_dir, encoding='utf-8'))
     template = env.get_template("guide.html.j2")
     return template.render(pages=pages)
@@ -41,9 +40,10 @@ def main():
 
         if not slides_dir.exists() or not notes_dir.exists():
             print(f"Build skipped: '{slides_dir.name}' or '{notes_dir.name}' directory not found in {output_dir}.", flush=True)
-            sys.exit(0) # Exit gracefully, not an error
+            sys.exit(0)
 
         slide_files = sorted([f for f in os.listdir(slides_dir) if f.endswith('.md')])
+        md = MarkdownIt()
         
         pages = []
         for slide_file in slide_files:
@@ -56,12 +56,16 @@ def main():
                 note_path = notes_dir / note_file_name
 
                 slide_content = slide_path.read_text(encoding="utf-8") if slide_path.exists() else "[Slide not found]"
-                note_content = note_path.read_text(encoding="utf-8") if note_path.exists() else "[Note not found]"
+                raw_note_content = note_path.read_text(encoding="utf-8") if note_path.exists() else "[Note not found]"
+                html_note_content = md.render(raw_note_content)
 
                 pages.append({
                     "id": slide_id,
                     "slide_content": slide_content,
-                    "note_content": note_content
+                    "note_content": {
+                        "raw": raw_note_content,
+                        "html": html_note_content
+                    }
                 })
             except IndexError:
                 print(f"[Warning] Could not parse filename: {slide_file}", flush=True)
@@ -72,7 +76,6 @@ def main():
 
         html_content = render_html(pages, templates_dir)
         output_path.write_text(html_content, encoding="utf-8")
-        # This success message is now printed by the orchestrator
 
     except Exception as e:
         print(f"[ERROR] An unexpected error occurred in build_guide.py: {e}", file=sys.stderr, flush=True)
