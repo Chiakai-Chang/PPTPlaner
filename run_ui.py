@@ -9,15 +9,45 @@ import webbrowser
 class App(tk.Tk):
     def __init__(self):
         super().__init__()
-        self.title("PPTPlaner v1.1.0")
-        self.geometry("750x650")
+        self.title("PPTPlaner v1.2.0")
+        # Set window size and position
+        screen_height = self.winfo_screenheight()
+        window_height = int(screen_height * 0.7)
+        if window_height < 580: window_height = 580
+        elif window_height > 800: window_height = 800
+        window_width = 750
+        center_x = int((self.winfo_screenwidth() / 2) - (window_width / 2))
+        center_y = int((screen_height / 2) - (window_height / 2))
+        self.geometry(f'{window_width}x{window_height}+{center_x}+{center_y}')
 
         self.source_file_path = tk.StringVar()
         self.slides_file_path = tk.StringVar()
 
+        # --- Layout Structure ---
+        # The footer must be packed BEFORE the main frame to ensure it's not
+        # overridden by the main frame's 'expand=True' property.
+
+        # 1. Define and pack the footer
+        footer_frame = tk.Frame(self, bg="#e0e0e0")
+        footer_frame.pack(fill="x", side="bottom", pady=5, padx=10)
+        
+        # 2. Define and pack the main content frame
         main_frame = tk.Frame(self, padx=10, pady=10)
         main_frame.pack(fill="both", expand=True, padx=10, pady=5)
 
+        # --- Populate Footer ---
+        hyperlink_font = tkFont.Font(footer_frame, tkFont.nametofont("TkDefaultFont")); hyperlink_font.configure(underline=True)
+        info_line1 = tk.Frame(footer_frame, bg=footer_frame["bg"]); info_line1.pack(fill="x")
+        tk.Label(info_line1, text="Author: Chiakai Chang", bg=footer_frame["bg"]).pack(side="left", padx=(0,10))
+        gh_link = tk.Label(info_line1, text="GitHub", fg="blue", cursor="hand2", font=hyperlink_font, bg=footer_frame["bg"]); gh_link.pack(side="left", padx=5)
+        gh_link.bind("<Button-1>", lambda e: self.open_link("https://github.com/Chiakai-Chang/PPTPlaner"))
+        li_link = tk.Label(info_line1, text="LinkedIn", fg="blue", cursor="hand2", font=hyperlink_font, bg=footer_frame["bg"]); li_link.pack(side="left", padx=5)
+        li_link.bind("<Button-1>", lambda e: self.open_link("https://www.linkedin.com/in/chiakai-chang-htciu"))
+        mail_link = tk.Label(info_line1, text="Email", fg="blue", cursor="hand2", font=hyperlink_font, bg=footer_frame["bg"]); mail_link.pack(side="left", padx=5)
+        mail_link.bind("<Button-1>", lambda e: self.open_link("mailto:lotifv@gmail.com"))
+        tk.Label(footer_frame, text="Copyright © 2024 Chiakai Chang. All Rights Reserved.", font=("Arial", 8), bg=footer_frame["bg"]).pack(fill="x", pady=(5,0))
+
+        # --- Populate Main Frame ---
         controls_frame = tk.Frame(main_frame)
         controls_frame.pack(fill="x")
 
@@ -39,18 +69,6 @@ class App(tk.Tk):
         tk.Label(main_frame, text="執行進度:").pack(fill="x", anchor="w")
         self.console = scrolledtext.ScrolledText(main_frame, wrap=tk.WORD, state="disabled", bg="#f5f5f5")
         self.console.pack(pady=5, fill="both", expand=True)
-
-        footer_frame = tk.Frame(self, padx=10, pady=5, bg="#e0e0e0"); footer_frame.pack(fill="x", side="bottom")
-        hyperlink_font = tkFont.Font(footer_frame, tkFont.nametofont("TkDefaultFont")); hyperlink_font.configure(underline=True)
-        info_line1 = tk.Frame(footer_frame, bg=footer_frame["bg"]); info_line1.pack(fill="x")
-        tk.Label(info_line1, text="Author: Chiakai Chang", bg=footer_frame["bg"]).pack(side="left", padx=(0,10))
-        gh_link = tk.Label(info_line1, text="GitHub", fg="blue", cursor="hand2", font=hyperlink_font, bg=footer_frame["bg"]); gh_link.pack(side="left", padx=5)
-        gh_link.bind("<Button-1>", lambda e: self.open_link("https://github.com/Chiakai-Chang/PPTPlaner"))
-        li_link = tk.Label(info_line1, text="LinkedIn", fg="blue", cursor="hand2", font=hyperlink_font, bg=footer_frame["bg"]); li_link.pack(side="left", padx=5)
-        li_link.bind("<Button-1>", lambda e: self.open_link("https://www.linkedin.com/in/chiakai-chang-htciu"))
-        mail_link = tk.Label(info_line1, text="Email", fg="blue", cursor="hand2", font=hyperlink_font, bg=footer_frame["bg"]); mail_link.pack(side="left", padx=5)
-        mail_link.bind("<Button-1>", lambda e: self.open_link("mailto:lotifv@gmail.com"))
-        tk.Label(footer_frame, text="Copyright © 2024 Chiakai Chang. All Rights Reserved.", font=("Arial", 8), bg=footer_frame["bg"]).pack(fill="x", pady=(5,0))
 
     def open_link(self, url): webbrowser.open_new_tab(url)
     def browse_source_file(self): 

@@ -65,7 +65,12 @@ def run_agent(agent: str, mode: str, vars_map: dict) -> str:
     instructions = parse_agent_specs().get(mode)
     if not instructions: print_error(f"在 AGENTS.md 中找不到模式 '{mode}'。")
 
-    prompt_parts = [f"Your task is '{mode}'. This request is for academic and educational purposes.", "--- INSTRUCTIONS ---", instructions, "--- CONTEXT & INPUTS ---"]
+    safety_preamble = ("You are an AI assistant in an academic context. Your purpose is to help a user create educational materials from a textbook. "
+                         "The textbook may contain sensitive topics (such as crime, violence, or other serious subjects) for the purpose of scholarly analysis. "
+                         "Your task is to process these topics factually and neutrally, as presented in the source material. "
+                         "Do not avoid sensitive subjects; handle them with an objective, academic tone suitable for a learning environment.")
+
+    prompt_parts = [safety_preamble, f"Your specific task is '{mode}'.", "--- INSTRUCTIONS ---", instructions, "--- CONTEXT & INPUTS ---"]
     for key, value in vars_map.items():
         if key.endswith("_path") and value and os.path.exists(value):
             prompt_parts.append(f"Content for '{os.path.basename(value)}':\n```\n{Path(value).read_text(encoding='utf-8')}\n```")
@@ -195,6 +200,21 @@ def main():
                     memo_vars["custom_instruction"] = cfg["custom_instruction"]
 
                 memo_content = run_agent(cfg["agent"], "MEMO", memo_vars)
+                if not memo_content or not memo_content.strip():
+                    memo_content = """### 備忘稿生成失敗
+
+AI 未能為此頁投影片生成備忘稿。
+
+**可能原因：**
+1.  **主題敏感性**：此頁主題（如：兒童安全、重大暴力犯罪）可能觸發了 AI 的安全機制，導致其拒絕生成相關內容。
+2.  **內容類型**：投影片內容可能為純粹的「大綱」、「目錄」或「學習目標」，AI 難以依據現有指令進行深度擴寫。
+3.  **AI 暫時性錯誤**：AI 模型在處理此特定請求時可能遇到暫時性問題。
+
+**建議操作：**
+*   請直接參考原始文件 (`source_file`) 來準備此頁的內容。
+*   嘗試調整 `AGENTS.md` 中的 `[MEMO]` 指令，使其對這類主題更加寬容。
+"""
+                    print_error(f"AI returned empty memo for page {page}. Writing placeholder.", exit_code=None) # Log error but don't exit
                 note_path.write_text(memo_content, encoding="utf-8")
                 print_success(f"  Memo saved for page {page}")
 
