@@ -1,6 +1,7 @@
 import os
 import sys
 import argparse
+import re # Import re module
 from pathlib import Path
 from markdown_it import MarkdownIt
 
@@ -15,8 +16,8 @@ def render_html(pages, templates_dir):
         print("[Warning] Jinja2 not found. Using basic HTML rendering.", flush=True)
         html = "<html><head><title>Guide</title></head><body>"
         for page in pages:
-            html += f"<h1>Slide {page['id']}</h1><pre>{page['slide_content']}</pre>"
-            html += f"<h2>Notes</h2><pre>{page['note_content']['raw']}</pre><hr>"
+            html += f"<h1>Slide {page['id']}</h1><div>{page['slide_content_html']}</div>"
+            html += f"<h2>Notes</h2><div>{page['note_content']['html']}</div><hr>"
         html += "</body></html>"
         return html
 
@@ -43,7 +44,7 @@ def main():
             sys.exit(0)
 
         slide_files = sorted([f for f in os.listdir(slides_dir) if f.endswith('.md')])
-        md = MarkdownIt()
+        md = MarkdownIt('commonmark', {'html': True}) # Enable HTML tags in source
         
         pages = []
         for slide_file in slide_files:
@@ -55,13 +56,21 @@ def main():
                 slide_path = slides_dir / slide_file
                 note_path = notes_dir / note_file_name
 
-                slide_content = slide_path.read_text(encoding="utf-8") if slide_path.exists() else "[Slide not found]"
+                # Process Slide Content
+                slide_content_raw = slide_path.read_text(encoding="utf-8") if slide_path.exists() else "[Slide not found]"
+                slide_content_html = md.render(slide_content_raw)
+
+                # Process Note Content
                 raw_note_content = note_path.read_text(encoding="utf-8") if note_path.exists() else "[Note not found]"
-                html_note_content = md.render(raw_note_content)
+                
+                # Fix: Strip markdown fences if they exist before rendering
+                match = re.search(r'^```(?:markdown)?\n(.*?)\n```$', raw_note_content, re.DOTALL | re.IGNORECASE)
+                content_to_render = match.group(1).strip() if match else raw_note_content
+                html_note_content = md.render(content_to_render)
 
                 pages.append({
                     "id": slide_id,
-                    "slide_content": slide_content,
+                    "slide_content_html": slide_content_html,
                     "note_content": {
                         "raw": raw_note_content,
                         "html": html_note_content
