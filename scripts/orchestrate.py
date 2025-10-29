@@ -81,7 +81,7 @@ def run_agent(agent: str, mode: str, vars_map: dict, retries: int = 3, delay: in
     final_prompt = "\n".join(prompt_parts)
 
     cmd = [found_agent_path]
-    if mode in ["PLAN", "PLAN_FROM_SLIDES", "SUMMARIZE_TITLE"]:
+    if mode in ["PLAN", "PLAN_FROM_SLIDES", "SUMMARIZE_TITLE", "VALIDATE_MEMO"]:
         cmd.extend(["--output-format", "json"])
 
     for attempt in range(retries):
@@ -198,7 +198,9 @@ def main():
             # covering both "generate from source" and "generate from slides" cases.
             if cfg.get("memo_per_page", True):
                 note_path = notes_dir / f"note-{page}_{topic}-zh.md"
-                
+                memo_content = ""
+                MAX_REWORKS = 2 # Initial generation + 2 reworks
+
                 memo_vars = {
                     "source_file_path": str(source_path),
                     "full_slides_content": full_slides_content,
@@ -209,24 +211,50 @@ def main():
                 if cfg.get("custom_instruction"):
                     memo_vars["custom_instruction"] = cfg["custom_instruction"]
 
-                memo_content = run_agent(cfg["agent"], "MEMO", memo_vars)
+                for attempt in range(MAX_REWORKS + 1):
+                    # Initial generation (attempt 0) or rework (attempt > 0)
+                    if attempt > 0:
+                        print_info(f"Reworking memo for page {page}... (Attempt {attempt}/{MAX_REWORKS})")
+                    memo_content = run_agent(cfg["agent"], "MEMO", memo_vars, retries=1) # Only 1 try per generation/rework cycle
+
+                    if not memo_content or not memo_content.strip():
+                        print_error(f"Memo generation for page {page} returned empty content on attempt {attempt}.", exit_code=None)
+                        continue # Try to regenerate
+
+                    # --- Validation Step ---
+                    print_info(f"Validating memo for page {page}...")
+                    validation_vars = {"slide_content": slide_content, "memo_content": memo_content}
+                    validation_json = run_agent(cfg["agent"], "VALIDATE_MEMO", validation_vars, retries=2) # Give validation a couple of tries
+                    validation_result = parse_ai_json_output(validation_json, "VALIDATE_MEMO")
+
+                    if validation_result.get("is_valid", False):
+                        print_success(f"Validation passed for page {page}.")
+                        break # Memo is good, exit the rework loop
+                    else:
+                        feedback = validation_result.get("feedback", "No feedback provided.")
+                        print_error(f"Validation failed for page {page}. Feedback: {feedback}", exit_code=None)
+                        memo_vars["rework_feedback"] = feedback # Add feedback for the next attempt
+                        memo_content = "" # Invalidate content to ensure loop continues or placeholder is used
+
+                # After the loop, check if we have valid content
                 if not memo_content or not memo_content.strip():
                     memo_content = """### 備忘稿生成失敗
 
-AI 未能為此頁投影片生成備忘稿。
+AI 未能為此頁投影片生成備忘稿，或生成的備忘稿未能通過品質檢驗。
 
 **可能原因：**
-1.  **主題敏感性**：此頁主題（如：兒童安全、重大暴力犯罪）可能觸發了 AI 的安全機制，導致其拒絕生成相關內容。
-2.  **內容類型**：投影片內容可能為純粹的「大綱」、「目錄」或「學習目標」，AI 難以依據現有指令進行深度擴寫。
-3.  **AI 暫時性錯誤**：AI 模型在處理此特定請求時可能遇到暫時性問題。
+1.  **主題敏感性**：此頁主題可能觸發了 AI 的安全機制。
+2.  **內容類型**：投影片內容為純粹的大綱或目標，AI 難以擴寫。
+3.  **品質檢驗失敗**：AI 生成的備忘稿未能逐點回應簡報內容。
+4.  **AI 暫時性錯誤**：AI 模型在處理此請求時遇到暫時性問題。
 
 **建議操作：**
 *   請直接參考原始文件 (`source_file`) 來準備此頁的內容。
-*   嘗試調整 `AGENTS.md` 中的 `[MEMO]` 指令，使其對這類主題更加寬容。
 """
-                    print_error(f"AI returned empty memo for page {page}. Writing placeholder.", exit_code=None) # Log error but don't exit
+                    print_error(f"Failed to generate a valid memo for page {page} after all attempts. Writing placeholder.", exit_code=None)
+                
                 note_path.write_text(memo_content, encoding="utf-8")
-                print_success(f"  Memo saved for page {page}")
+                if "備忘稿生成失敗" not in memo_content: print_success(f"  Memo saved for page {page}")
 
     print_header("Phase 3: Finalizing Output")
     # The build_guide.py script was not fully implemented, so we call it with basic args
