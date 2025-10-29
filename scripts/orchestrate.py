@@ -1,4 +1,4 @@
-import sys, os, json, subprocess, shutil, argparse, webbrowser, re
+import sys, os, json, subprocess, shutil, argparse, webbrowser, re, time
 from pathlib import Path
 import yaml
 from datetime import datetime
@@ -52,7 +52,7 @@ def run_command(cmd: list[str], input_text: str | None = None) -> subprocess.Com
     except subprocess.CalledProcessError as e:
         print_error(f"指令執行失敗 (Exit Code: {e.returncode}): {" ".join(e.cmd)}\n  STDOUT: {e.stdout.strip()}\n  STDERR: {e.stderr.strip()}")
 
-def run_agent(agent: str, mode: str, vars_map: dict) -> str:
+def run_agent(agent: str, mode: str, vars_map: dict, retries: int = 3, delay: int = 5) -> str:
     agent_cmd, found_agent_path = agent.lower().strip(), None
     scripts_path_from_env = os.environ.get("PPTPLANER_SCRIPTS_PATH")
     if scripts_path_from_env:
@@ -84,9 +84,19 @@ def run_agent(agent: str, mode: str, vars_map: dict) -> str:
     if mode in ["PLAN", "PLAN_FROM_SLIDES", "SUMMARIZE_TITLE"]:
         cmd.extend(["--output-format", "json"])
 
-    print_info(f"Calling {agent_cmd.capitalize()} for {mode}... (This may take a moment...)")
-    result = run_command(cmd, input_text=final_prompt)
-    return result.stdout.strip()
+    for attempt in range(retries):
+        print_info(f"Calling {agent_cmd.capitalize()} for {mode}... (Attempt {attempt + 1}/{retries})")
+        result = run_command(cmd, input_text=final_prompt)
+        output = result.stdout.strip()
+        if output:
+            return output # Success
+        
+        if attempt < retries - 1:
+            print_error(f"AI returned empty response for {mode}. Retrying in {delay}s...", exit_code=None)
+            time.sleep(delay)
+
+    print_error(f"AI failed to generate a response for {mode} after {retries} attempts.", exit_code=None)
+    return "" # Return empty string if all retries fail
 
 def parse_ai_json_output(output: str, mode: str) -> dict:
     try:
