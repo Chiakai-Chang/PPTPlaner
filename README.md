@@ -97,11 +97,22 @@
 flowchart TD
     A["使用者輸入<br>(原文書 + 選填的簡報檔)"] --> B["run_ui.py<br>(圖形介面)"]
     B --> C["scripts/orchestrate.py<br>(指揮官)"]
-    C --> D["AI Agent<br>(大腦)"]
-    D -- 讀取 --> E["AGENTS.md<br>(指令書)"]
-    D -- 生成 --> F["投影片 & 備忘稿"]
-    F --> G["scripts/build_guide.py"]
-    G --> H["最終產出<br>(guide.html 等檔案)"]
+    
+    C -- "命令 AI" --> D["AI Agent<br>(大腦)"]
+    D -- "讀取指令" --> E["AGENTS.md<br>(指令書)"]
+
+    subgraph "生成流程 (由指揮官 C 控制)"
+        D -- "1. 生成投影片" --> S["投影片"]
+        D -- "2. 生成備忘稿初稿" --> M1["備忘稿初稿"]
+        M1 --> V{品管檢查}
+        V -- "合格" --> M2["最終備忘稿"]
+        V -- "不合格<br>(帶意見重寫)" --> D
+    end
+
+    S --> G
+    M2 --> G
+    
+    G["scripts/build_guide.py"] --> H["最終產出<br>(guide.html 等檔案)"]
 ```
 
 ### 備忘稿的「品管-修正」循環 (The Memo Quality-Rework Loop)
