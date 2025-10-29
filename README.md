@@ -32,6 +32,32 @@
 
 ---
 
+## 💻 系統預覽 (Demo)
+
+<!-- 兩張圖並排，各佔一半（GitHub 允許的純 HTML，無 style 屬性） -->
+<table width="100%">
+  <tr>
+    <td align="center"><b>程式運行畫面</b></td>
+    <td align="center"><b>程式介面（含品管AI回饋）</b></td>
+  </tr>
+  <tr>
+    <td width="50%" align="center">
+      <img src="/demo/CMD.png" width="100%" alt="程式運行畫面">
+    </td>
+    <td width="50%" align="center">
+      <img src="/demo/UI_Validate.png" width="100%" alt="程式介面（含品管AI回饋）">
+    </td>
+  </tr>
+</table>
+
+<!-- 跨欄：產出結果預覽 -->
+<p align="center" style="margin-top: 12px;"><b>產出結果預覽</b></p>
+<p align="center">
+  <img src="/demo/Result.png" width="98%" alt="產出結果預覽">
+</p>
+
+---
+
 ## ⚙️ 系統需求 (System Requirements)
 
 為了讓程式順利運行，您的電腦需要先安裝兩項基礎軟體。別擔心，整個過程非常簡單！
