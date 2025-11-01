@@ -100,7 +100,6 @@ class App(tk.Tk):
 
         try:
             if slides_file: command.extend(["--plan-from-slides", slides_file])
-            else: command.append("--force")
             thread = threading.Thread(target=self.run_in_thread, args=(command,)); thread.start()
         except Exception as e:
             self.log_message(f"啟動程序時發生錯誤: {e}\n"); self.run_button.config(state="normal", text="開始生成")
