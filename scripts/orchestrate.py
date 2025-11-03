@@ -81,7 +81,7 @@ def run_agent(agent: str, mode: str, vars_map: dict, retries: int = 3, delay: in
     final_prompt = "\n".join(prompt_parts)
 
     cmd = [found_agent_path]
-    if mode in ["PLAN", "PLAN_FROM_SLIDES", "SUMMARIZE_TITLE", "VALIDATE_MEMO"]:
+    if mode in ["PLAN", "PLAN_FROM_SLIDES", "SUMMARIZE_TITLE", "VALIDATE_MEMO", "VALIDATE_SLIDE"]:
         cmd.extend(["--output-format", "json"])
 
     for attempt in range(retries):
@@ -187,9 +187,48 @@ def main():
         for item in pages:
             page, topic = item["page"], item["topic"]
             slide_path = slides_dir / f"{page}_{topic}.md"
+            slide_content = ""
+
             if not slide_path.exists():
-                slide_content = run_agent(cfg["agent"], "SLIDE", {"source_file_path": str(source_path), "page": page, "topic": topic})
+                MAX_SLIDE_REWORKS = 2
+                slide_vars = {
+                    "source_file_path": str(source_path),
+                    "page": page,
+                    "topic": topic
+                }
+
+                for attempt in range(MAX_SLIDE_REWORKS + 1):
+                    if attempt > 0:
+                        print_info(f"Reworking slide for page {page}... (Attempt {attempt}/{MAX_SLIDE_REWORKS})")
+                    
+                    current_slide_content = run_agent(cfg["agent"], "SLIDE", slide_vars, retries=1)
+
+                    if not current_slide_content or not current_slide_content.strip():
+                        print_error(f"Slide generation for page {page} returned empty content on attempt {attempt}.", exit_code=None)
+                        continue
+
+                    print_info(f"Validating slide for page {page}...")
+                    validation_vars = {"slide_content": current_slide_content, "topic": topic}
+                    validation_json = run_agent(cfg["agent"], "VALIDATE_SLIDE", validation_vars, retries=2)
+                    validation_result = parse_ai_json_output(validation_json, "VALIDATE_SLIDE")
+
+                    if validation_result.get("is_valid", False):
+                        print_success(f"Slide validation passed for page {page}.")
+                        slide_content = current_slide_content
+                        break
+                    else:
+                        feedback = validation_result.get("feedback", "No feedback provided.")
+                        print_error(f"Slide validation failed for page {page}. Feedback: {feedback}", exit_code=None)
+                        slide_vars["rework_feedback"] = feedback
+                        slide_content = ""
+                
+                if not slide_content or not slide_content.strip():
+                    slide_content = f"# Slide Generation Failed: {topic}\n\nAI failed to generate a valid slide for this page after all attempts."
+                    print_error(f"Failed to generate a valid slide for page {page}. Writing placeholder.", exit_code=None)
+                
                 slide_path.write_text(slide_content, encoding="utf-8")
+                if "Slide Generation Failed" not in slide_content: print_success(f"  Slide saved for page {page}")
+
             else:
                 slide_content = slide_path.read_text(encoding="utf-8")
 
