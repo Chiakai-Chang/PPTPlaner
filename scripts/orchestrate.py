@@ -121,6 +121,8 @@ def main():
     parser.add_argument("--source", dest="source_file", help="Source file to process")
     parser.add_argument("--agent", dest="agent", help="AI agent to use (e.g., gemini)")
     parser.add_argument("--custom-instruction", dest="custom_instruction", help="User-provided custom instruction for the MEMO agent")
+    parser.add_argument("--slide-reworks", dest="slide_max_reworks", type=int, help="Override slide_max_reworks from config.yaml")
+    parser.add_argument("--memo-reworks", dest="memo_max_reworks", type=int, help="Override memo_max_reworks from config.yaml")
     mode_group = parser.add_mutually_exclusive_group()
     mode_group.add_argument("--slides-only", action="store_true")
     mode_group.add_argument("--memos-only", action="store_true")
@@ -177,12 +179,16 @@ def main():
 
         if not args.memos_only and slides_needed:
             print_info("Starting holistic slide deck generation for consistency.")
-            MAX_DECK_REWORKS = 2
+            perfect_slides = []
+            acceptable_slides = []
+            last_slides_attempt = []
+
+            MAX_DECK_REWORKS = cfg.get("slide_max_reworks", 3) # Default to 3 reworks for the whole deck
             deck_vars = {
                 "source_file_path": str(source_path),
-                "pages_json": json.dumps(pages, ensure_ascii=False, indent=2)
+                "plan_json": json.dumps(pages, ensure_ascii=False, indent=2),
+                "page_count": len(pages)
             }
-            final_slides = []
 
             for attempt in range(MAX_DECK_REWORKS + 1):
                 if attempt > 0:
@@ -199,30 +205,48 @@ def main():
                 if not generated_slides or len(generated_slides) != len(pages):
                     print_error(f"Deck generation returned incomplete slides. Expected {len(pages)}, got {len(generated_slides)}.", exit_code=None)
                     continue
+                
+                last_slides_attempt = generated_slides
 
                 print_info("Validating entire slide deck for consistency and flow...")
                 validation_vars = {"slides_json": json.dumps(generated_slides, ensure_ascii=False, indent=2)}
                 validation_json = run_agent(cfg["agent"], "VALIDATE_DECK", validation_vars, retries=2)
                 
-                validation_result = {"is_valid": False, "feedback": "Validation agent returned no response."}
+                validation_result = {"is_valid": False, "is_acceptable": False, "feedback": "Validation agent returned no response."}
                 if validation_json:
                     validation_result = parse_ai_json_output(validation_json, "VALIDATE_DECK")
 
                 if validation_result.get("is_valid", False):
-                    print_success("Slide deck validation passed.")
-                    final_slides = generated_slides
-                    break
-                else:
-                    feedback = validation_result.get("feedback", "No feedback provided.")
-                    print_error(f"Slide deck validation failed. Feedback: {feedback}", exit_code=None)
-                    deck_vars["rework_feedback"] = feedback
-                    final_slides = []
+                    print_success("Perfect slide deck validation passed. Finishing.")
+                    perfect_slides = generated_slides
+                    break  # Perfection found, exit loop immediately
+                elif validation_result.get("is_acceptable", False):
+                    print_success("Slide deck validation 'acceptable'. Storing as fallback and continuing.")
+                    acceptable_slides = generated_slides
+                    # Do not break; continue to strive for a perfect version
+                
+                feedback = validation_result.get("feedback", "No feedback provided.")
+                print_error(f"Slide deck validation failed. Feedback: {feedback}", exit_code=None)
+                deck_vars["rework_feedback"] = feedback
+
+            # After the loop, decide which version to use
+            final_slides = []
+            if perfect_slides:
+                final_slides = perfect_slides
+            elif acceptable_slides:
+                print_info("Using best 'acceptable' version of the slide deck.")
+                final_slides = acceptable_slides
+            elif last_slides_attempt:
+                print_error("No valid or acceptable deck found. Using the last raw attempt with a warning.", exit_code=None)
+                # In this case, we just use the last attempt without a warning header,
+                # as the user will see the errors in the log.
+                final_slides = last_slides_attempt
             
             if not final_slides:
-                print_error("Failed to generate a valid slide deck. Writing placeholders.", exit_code=None)
+                print_error("Failed to generate any slide deck content. Writing placeholders.", exit_code=None)
                 for item in pages:
                     slide_path = slides_dir / f"{item['page']}_{item['topic']}.md"
-                    slide_content = f"# Slide Generation Failed: {item['topic']}\n\nAI failed to generate a valid slide deck."
+                    slide_content = f"# Slide Generation Failed: {item['topic']}\n\nAI failed to generate any slide deck content."
                     slide_path.write_text(slide_content, encoding="utf-8")
             else:
                 print_info("Saving final slide deck...")
@@ -258,6 +282,7 @@ def main():
             if full_slides_content: print_success("Full context aggregated.")
 
             for item in pages:
+                print(f"--- DEBUG: PROCESSING MEMO FOR PAGE {item['page']} ---", flush=True)
                 page, topic = item["page"], item["topic"]
                 slide_path = slides_dir / f"{page}_{topic}.md"
 
@@ -267,8 +292,11 @@ def main():
                 
                 slide_content = slide_path.read_text(encoding="utf-8")
                 note_path = notes_dir / f"note-{page}_{topic}-zh.md"
-                memo_content = ""
-                MAX_REWORKS = 2
+                
+                perfect_memo = ""
+                acceptable_memo = ""
+                last_memo_attempt = ""
+                MAX_REWORKS = cfg.get("memo_max_reworks", 5)
 
                 memo_vars = {
                     "source_file_path": str(source_path),
@@ -283,45 +311,67 @@ def main():
                 for attempt in range(MAX_REWORKS + 1):
                     if attempt > 0:
                         print_info(f"Reworking memo for page {page}... (Attempt {attempt}/{MAX_REWORKS})")
-                    memo_content = run_agent(cfg["agent"], "MEMO", memo_vars, retries=1)
+                    
+                    current_attempt_content = run_agent(cfg["agent"], "MEMO", memo_vars, retries=1)
 
-                    if not memo_content or not memo_content.strip():
+                    if not current_attempt_content or not current_attempt_content.strip():
                         print_error(f"Memo generation for page {page} returned empty content on attempt {attempt}.", exit_code=None)
                         continue
+                    
+                    last_memo_attempt = current_attempt_content
 
                     print_info(f"Validating memo for page {page}...")
-                    validation_vars = {"slide_content": slide_content, "memo_content": memo_content}
+                    validation_vars = {"slide_content": slide_content, "memo_content": last_memo_attempt}
                     validation_json = run_agent(cfg["agent"], "VALIDATE_MEMO", validation_vars, retries=2)
                     validation_result = parse_ai_json_output(validation_json, "VALIDATE_MEMO")
 
                     if validation_result.get("is_valid", False):
-                        print_success(f"Validation passed for page {page}.")
+                        print_success(f"Validation passed for page {page}. Finishing.")
+                        perfect_memo = last_memo_attempt
                         break
-                    else:
-                        feedback = validation_result.get("feedback", "No feedback provided.")
-                        print_error(f"Validation failed for page {page}. Feedback: {feedback}", exit_code=None)
-                        memo_vars["rework_feedback"] = feedback
-                        memo_content = ""
+                    elif validation_result.get("is_acceptable", False):
+                        print_success(f"Validation 'acceptable' for page {page}. Storing as fallback.")
+                        acceptable_memo = last_memo_attempt
+                    
+                    feedback = validation_result.get("feedback", "No feedback provided.")
+                    print_error(f"Validation failed for page {page}. Feedback: {feedback}", exit_code=None)
+                    memo_vars["rework_feedback"] = feedback
 
-                if not memo_content or not memo_content.strip():
-                    memo_content = """### 備忘稿生成失敗
+                # After the loop, decide what to write
+                final_memo_content = ""
+                if perfect_memo:
+                    final_memo_content = perfect_memo
+                elif acceptable_memo:
+                    print_info(f"Using best 'acceptable' version for page {page} memo.")
+                    final_memo_content = acceptable_memo
+                elif last_memo_attempt:
+                    print_error(f"No valid or acceptable memo found for page {page}. Saving the last raw attempt with a warning.", exit_code=None)
+                    warning_header = """> [!WARNING]
+> **AI 自動修正失敗**
+>
+> 以下是由 AI 生成的最後一版備忘稿。它未能完全通過品質檢驗，可能包含錯誤或遺漏。請仔細核對並手動修正。
+>
+> ---
 
-AI 未能為此頁投影片生成備忘稿，或生成的備忘稿未能通過品質檢驗。
+"""
+                    final_memo_content = warning_header + last_memo_attempt
+                else:
+                    final_memo_content = """### 備忘稿生成失敗
+
+AI 未能為此頁投影片生成備忘稿，所有嘗試均返回空內容。
 
 **可能原因：**
 1.  **主題敏感性**：此頁主題可能觸發了 AI 的安全機制。
-2.  **內容類型**：投影片內容為純粹的大綱或目標，AI 難以擴寫。
-3.  **品質檢驗失敗**：AI 生成的備忘稿未能逐點回應簡報內容。
-4.  **AI 暫時性錯誤**：AI 模型在處理此請求時遇到暫時性問題。
+2.  **AI 暫時性錯誤**：AI 模型在處理此請求時遇到暫時性問題。
 
 **建議操作：**
 *   請直接參考原始文件 (`source_file`) 來準備此頁的內容。
 """
-                    print_error(f"Failed to generate a valid memo for page {page}. Writing placeholder.", exit_code=None)
-                
-                note_path.write_text(memo_content, encoding="utf-8")
-                if "備忘稿生成失敗" not in memo_content: print_success(f"  Memo saved for page {page}")
+                    print_error(f"Failed to generate any memo content for page {page} after all attempts. Writing placeholder.", exit_code=None)
 
+                note_path.write_text(final_memo_content, encoding="utf-8")
+                if "> [!WARNING]" not in final_memo_content and "備忘稿生成失敗" not in final_memo_content:
+                    print_success(f"  Memo saved for page {page}")
     print_header("Phase 3: Finalizing Output")
     # The build_guide.py script was not fully implemented, so we call it with basic args
     build_script_path = ROOT / "scripts" / "build_guide.py"

@@ -47,3 +47,14 @@ zip_name: "PPTPlaner_Package.zip"  # 打包檔名
 
 # 💡 預設提示語氣（可視需求修改）
 tone: "academic-friendly"          # academic / formal / narrative / teaching
+
+# ============================================================
+#  AI 品管與重試設定 (AI Quality Control & Rework Settings)
+# ============================================================
+# 您可以調整 AI 自我修正的次數。
+# 數字越大，產出品質可能越高，但等待時間也越長。
+# 0 = 不重試 (只生成一次)
+# 5 = 預設值 (1 次生成 + 5 次修正機會)，在品質與時間間取得平衡
+
+slide_max_reworks: 5  # 整份簡報的修正次數
+memo_max_reworks: 5   # 每頁備忘稿的修正次數
