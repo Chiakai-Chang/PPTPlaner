@@ -282,7 +282,6 @@ def main():
             if full_slides_content: print_success("Full context aggregated.")
 
             for item in pages:
-                print(f"--- DEBUG: PROCESSING MEMO FOR PAGE {item['page']} ---", flush=True)
                 page, topic = item["page"], item["topic"]
                 slide_path = slides_dir / f"{page}_{topic}.md"
 
