@@ -126,7 +126,8 @@
 3. 將你的原文書(僅接受: .txt, .md 格式)提供，即可開始生成簡報與備忘稿。
    * 如何將 PDF 轉換成 .md? 提供以下便利工具:
       * [MinerU 線上版](https://mineru.net/OpenSourceTools/Extractor) (開源 GitHub 位址: https://github.com/opendatalab/mineru)
-      * 原本 PPT 的簡報若要轉換成 .md，建議先另存成 .pptx 格式，然後請 [ChatGPT](https://chatgpt.com/) 幫忙即可。
+      * (會使用 Docker + 有 GPU + 想本地運行的話可考慮) [DeepSeek-OCR-WebUI](https://github.com/neosun100/DeepSeek-OCR-WebUI)
+      * (額外) 原本 PPT 的簡報若要轉換成 .md，建議先另存成 .pptx 格式，然後請 [ChatGPT](https://chatgpt.com/) 幫忙即可(但只是把文字提取出來而已，若想要更完整，還是建議用 MinerU 之類的工具)。
 
 就是這麼簡單！這個腳本會自動處理所有事情，並為您啟動圖形操作介面。
 
