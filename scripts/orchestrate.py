@@ -103,7 +103,8 @@ def parse_ai_json_output(output: str, mode: str) -> dict:
         cli_output_obj = json.loads(output)
         response_str = cli_output_obj.get("response", "{}")
         if not response_str: print_error(f"AI 回應為空。收到的內容: {output}")
-        match = re.search(r'```json\n(.*?)\n```', response_str, re.DOTALL)
+        # A more robust regex to find the JSON block
+        match = re.search(r"```(?:json)?\s*({.*?})\s*```", response_str, re.DOTALL)
         json_str = match.group(1).strip() if match else response_str
         return json.loads(json_str)
     except (json.JSONDecodeError, AttributeError): print_error(f"{mode} 階段輸出不是有效的 JSON。收到的內容: {output}")
