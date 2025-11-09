@@ -123,6 +123,11 @@
 2.  **雙擊它**
     *   直接用滑鼠雙擊執行它。
 
+3. 將你的原文書(僅接受: .txt, .md 格式)提供，即可開始生成簡報與備忘稿。
+   * 如何將 PDF 轉換成 .md? 提供以下便利工具:
+      * [MinerU 線上版](https://mineru.net/OpenSourceTools/Extractor) (開源 GitHub 位址: https://github.com/opendatalab/mineru)
+      * 原本 PPT 的簡報若要轉換成 .md，建議先另存成 .pptx 格式，然後請 [ChatGPT](https://chatgpt.com/) 幫忙即可。
+
 就是這麼簡單！這個腳本會自動處理所有事情，並為您啟動圖形操作介面。
 
 ---
