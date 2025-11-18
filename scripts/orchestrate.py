@@ -116,6 +116,31 @@ def get_config(args: argparse.Namespace) -> dict:
     cfg.update(cli_args)
     return cfg
 
+def _combine_slides_into_single_file(slides_dir: Path):
+    """Finds all .md files, sorts them numerically, and combines them."""
+    if not slides_dir.is_dir():
+        print_error(f"Combine slides failed: Directory '{slides_dir}' not found.", exit_code=None)
+        return
+
+    slide_files = sorted(slides_dir.glob("*.md"))
+    if not slide_files:
+        return # No slides to combine, just exit quietly.
+
+    def get_numeric_prefix(p: Path) -> int:
+        match = re.match(r'^(\d+)', p.name)
+        return int(match.group(1)) if match else 9999
+    slide_files.sort(key=get_numeric_prefix)
+
+    all_content = [p.read_text(encoding="utf-8") for p in slide_files]
+    combined_content = "\n\n---\n\n".join(all_content)
+    
+    output_file = slides_dir.parent / "combined_slides.md"
+    try:
+        output_file.write_text(combined_content, encoding="utf-8")
+        print_success(f"All {len(slide_files)} slides combined into: {output_file.name}")
+    except Exception as e:
+        print_error(f"Failed to write combined slides file: {e}", exit_code=None)
+
 def main():
     parser = argparse.ArgumentParser(description="PPTPlaner Orchestrator")
     # Use dest='source_file' to match the key in config.yaml

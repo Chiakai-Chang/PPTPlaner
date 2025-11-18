@@ -9,7 +9,7 @@ import webbrowser
 class App(tk.Tk):
     def __init__(self):
         super().__init__()
-        self.title("PPTPlaner v1.4.0")
+        self.title("PPTPlaner v1.5.0")
         # Set window size and position
         screen_height = self.winfo_screenheight()
         window_height = int(screen_height * 0.7)
@@ -80,11 +80,24 @@ class App(tk.Tk):
 
     def open_link(self, url): webbrowser.open_new_tab(url)
     def browse_source_file(self): 
-        filepath = filedialog.askopenfilename(title="選擇原文書檔案", filetypes=(("Markdown & Text", "*.md *.txt"), ("All files", "*.*"))); 
-        if filepath: self.source_file_path.set(os.path.relpath(filepath))
+        filepath = filedialog.askopenfilename(title="選擇原文書檔案", filetypes=(("Markdown & Text", "*.md *.txt"), ("All files", "*.*")))
+        if filepath:
+            try:
+                # Try to make it a relative path
+                display_path = os.path.relpath(filepath)
+            except ValueError:
+                # If it fails (e.g., different drives), use the absolute path
+                display_path = os.path.abspath(filepath)
+            self.source_file_path.set(display_path)
+
     def browse_slides_file(self): 
-        filepath = filedialog.askopenfilename(title="選擇簡報檔案", filetypes=(("Markdown & Text", "*.md *.txt"), ("All files", "*.*"))); 
-        if filepath: self.slides_file_path.set(os.path.relpath(filepath))
+        filepath = filedialog.askopenfilename(title="選擇簡報檔案", filetypes=(("Markdown & Text", "*.md *.txt"), ("All files", "*.*")))
+        if filepath:
+            try:
+                display_path = os.path.relpath(filepath)
+            except ValueError:
+                display_path = os.path.abspath(filepath)
+            self.slides_file_path.set(display_path)
     def log_message(self, message): self.console.config(state="normal"); self.console.insert(tk.END, message); self.console.see(tk.END); self.console.config(state="disabled"); self.update_idletasks()
     def run_in_thread(self, command): 
         with subprocess.Popen(command, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True, encoding='utf-8', errors='replace', bufsize=1, universal_newlines=True) as process:

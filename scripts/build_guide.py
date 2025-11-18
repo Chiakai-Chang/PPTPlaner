@@ -1,7 +1,7 @@
 import os
 import sys
 import argparse
-import re # Import re module
+import re
 from pathlib import Path
 from markdown_it import MarkdownIt
 
@@ -58,7 +58,10 @@ def main():
 
                 # Process Slide Content
                 slide_content_raw = slide_path.read_text(encoding="utf-8") if slide_path.exists() else "[Slide not found]"
-                slide_content_html = md.render(slide_content_raw)
+                # Fix: Strip markdown fences if they exist before rendering, just in case.
+                slide_match = re.search(r'^```(?:markdown)?\n(.*?)\n```$', slide_content_raw, re.DOTALL | re.IGNORECASE)
+                slide_content_to_render = slide_match.group(1).strip() if slide_match else slide_content_raw
+                slide_content_html = md.render(slide_content_to_render)
 
                 # Process Note Content
                 raw_note_content = note_path.read_text(encoding="utf-8") if note_path.exists() else "[Note not found]"
