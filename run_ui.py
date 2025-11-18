@@ -9,7 +9,7 @@ import webbrowser
 class App(tk.Tk):
     def __init__(self):
         super().__init__()
-        self.title("PPTPlaner v1.5.0")
+        self.title("PPTPlaner v1.5.1")
         # Set window size and position
         screen_height = self.winfo_screenheight()
         window_height = int(screen_height * 0.7)

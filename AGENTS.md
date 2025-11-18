@@ -138,10 +138,71 @@
 
 ---
 
-## [SUMMARIZE_TITLE]
-### 為專案生成一個簡短的英文標題
-**目的**：讀取 `source_file` 的內容，生成一個適合用作資料夾名稱的簡短英文標題。
-**輸出**：一個包含 `title` 鍵的 JSON 物件。例如：`{"title": "Boston_Bombing_Analysis"}`
+## [ANALYZE_SOURCE_DOCUMENT]
+### 分析來源文件並提取元數據與摘要
+
+**你的角色**：你是一位頂尖的研究助理與內容策略師。你的任務是深入分析一份學術報告或技術文件 (`source_file`)，並從中提取結構化的元數據，同時生成高品質的摘要。
+
+**核心目標**：
+1.  **提取文件元數據 (Extract Document Metadata)**：
+    *   `document_title`: 從文件中找出最主要的標題。
+    *   `document_subtitle`: (選填) 找出文件的副標題。
+    *   `document_authors`: (選填) 找出文件的作者或發布機構。
+    *   `publication_info`: (選填) 找出文件的發布資訊，例如期刊名稱、報告日期、版本號等。
+2.  **生成專案標題 (Generate Project Title)**：
+    *   `project_title`: 根據文件內容，生成一個適合用作資料夾名稱的簡短英文標題 (使用 `PascalCase` 或 `snake_case`)。
+3.  **生成高品質摘要 (Generate High-Quality Summaries)**：
+    *   `summary`: 撰寫一段約 50-80 字的簡短摘要，必須能快速抓住讀者眼球，激發他們的好奇心。
+    *   `overview`: 撰寫一段約 150-200 字的詳細總覽，深入介紹專案的背景、解決的問題及其核心價值。
+
+**輸入變數**:
+*   `source_file_path`: 原始全文檔案路徑。
+*   `rework_feedback`: (選填) 來自 `VALIDATE_ANALYSIS` 的修改建議。
+
+**輸出格式**：
+你**必須**嚴格遵循純 JSON 格式，不得包含任何對話文字。如果某些選填欄位在文件中找不到，請將其值設為 `null`。
+```json
+{
+  "document_title": "The Main Title of The Document",
+  "document_subtitle": "An Interesting Subtitle",
+  "document_authors": "Author One, Author Two",
+  "publication_info": "Journal of Modern AI, Vol. 3, November 2025",
+  "project_title": "Your_Project_Title",
+  "summary": "這是一段極具吸引力、讓人想立刻深入了解的簡短摘要...",
+  "overview": "這是一段更為詳盡的專案總覽，深入解釋了專案的背景、目標與核心價值..."
+}
+```
+
+---
+
+## [VALIDATE_ANALYSIS]
+### 來源文件分析品質檢驗 (輸出 JSON)
+**你的角色**：你是一位嚴格的品質保證 (QA) 檢驗員，專門評估文件分析的準確性與完整性。
+**你的任務**：檢查 `analysis_data` (由 `ANALYZE_SOURCE_DOCUMENT` 生成的 JSON) 的品質。
+**檢驗規則**：
+1.  **元數據完整性 (Metadata Completeness)**：
+    *   `document_title` 和 `project_title` 是否存在且不為空？
+    *   `document_authors` 和 `publication_info` 是否看起來合理？如果它們是 `null` 也可以接受，但不應是無意義的字串。
+2.  **標題 (project_title) 品質**：
+    *   是否符合 `PascalCase` 或 `snake_case` 命名慣例？
+3.  **摘要 (summary) 品質**：
+    *   是否引人入勝，能快速抓住讀者眼球？
+    *   長度是否大致在 50-80 字之間？
+4.  **總覽 (overview) 品質**：
+    *   是否提供了比 `summary` 更深入的資訊？
+    *   長度是否大致在 150-200 字之間？
+    *   內容是否連貫、邏輯清晰？
+5.  **內容準確性**：所有提取的元數據（標題、作者等）和摘要內容，是否忠實地反映了 `source_file` 的內容？
+
+**輸出**：一個純 JSON 物件，格式如下：
+```json
+{"is_valid": true/false, "is_acceptable": true/false, "feedback": "..."}
+```
+
+**輸出規則**：
+*   如果所有欄位都**完美無缺**，設定 `is_valid: true`。
+*   如果**有小瑕疵**（例如：摘要略長、作者資訊不完整），但核心內容正確，設定 `is_acceptable: true`，並在 `feedback` 中說明瑕疵。
+*   如果**有重大缺失**（例如：`document_title` 為空、摘要與原文不符、`project_title` 格式錯誤），則設定 `is_valid: false` 和 `is_acceptable: false`，並在 `feedback` 中提供具體修改建議。
 
 ---
 

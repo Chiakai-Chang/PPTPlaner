@@ -40,14 +40,36 @@
   .footer{color:var(--muted); font-size:12px; padding:20px 0 40px; text-align:center;}
   .badge{font-size:11px; padding:2px 8px; border-radius:999px; border:1px solid var(--border); background:var(--card); color:var(--muted);}
   .ok{color:var(--ok)} .warn{color:var(--warn)} .bad{color:var(--bad)}
+
+  /* --- Layout Styles for side-by-side view --- */
+  .page { display: flex; border-bottom: 1px solid var(--border); padding: 20px 0; margin-bottom: 20px; }
+  .slide { flex: 1; padding-right: 20px; border-right: 1px solid var(--border); min-width: 0; }
+  .notes { flex: 1; padding-left: 20px; min-width: 0; }
+  h2 { border-bottom: 1px solid var(--border); padding-bottom: 10px; color: var(--fg); font-size: 18px; margin-top: 0; }
+  pre { background: var(--card); padding: 15px; border-radius: 8px; white-space: pre-wrap; word-wrap: break-word; border: 1px solid var(--border); font-family: Consolas, Monaco, 'Andale Mono', 'Ubuntu Mono', monospace; }
+  
+  /* Generic styles for rendered markdown content */
+  .rendered-content h1, .rendered-content h2, .rendered-content h3, .rendered-content h4, .rendered-content h5, .rendered-content h6 { border-bottom: none; padding-bottom: 5px; margin-top: 20px; }
+  .rendered-content ul, .rendered-content ol { padding-left: 25px; }
+  .rendered-content code { background-color: var(--pill); padding: 2px 5px; border-radius: 3px; font-family: Consolas, Monaco, 'Andale Mono', 'Ubuntu Mono', monospace; }
+  .rendered-content blockquote { border-left: 4px solid var(--border); padding-left: 15px; color: var(--muted); margin-left: 0; }
+  .rendered-content table { border-collapse: collapse; width: 100%; margin: 1em 0; }
+  .rendered-content th, .rendered-content td { border: 1px solid var(--border); padding: 8px; }
+  .rendered-content th { background-color: var(--card); }
+  .rendered-content img { max-width: 100%; height: auto; display: block; margin: 1em 0; border-radius: 8px; }
 </style>
 </head>
 <body>
 <header>
   <div class="container">
-    <h1>PPTPlaner 指引｜Slides & Notes Guide</h1>
-    <p class="subtitle">快速對照投影片 (Slides) 與備忘稿 (Notes)，提供清晰的內容總覽。</p>
+    <h1>{{ project_info.title }}</h1>
+    <p class="subtitle">{{ project_info.summary }}</p>
+    {% if project_info.overview_html %}
     <div class="hr"></div>
+    <div class="rendered-content" style="font-size: 15px; padding-bottom: 10px;">
+        {{ project_info.overview_html | safe }}
+    </div>
+    {% endif %}
   </div>
 </header>
 
@@ -70,6 +92,17 @@
         </div>
         {% endfor %}
     </main>
+
+    <footer class="footer">
+        <div class="hr" style="margin: 40px 0 20px;"></div>
+        <div class="meta" style="justify-content: center; font-size: 14px;">
+            <span>Author: Chiakai Chang</span>
+            <a href="https://github.com/Chiakai-Chang/PPTPlaner" target="_blank">GitHub</a>
+            <a href="https://www.linkedin.com/in/chiakai-chang-htciu" target="_blank">LinkedIn</a>
+            <a href="mailto:lotifv@gmail.com">Email</a>
+        </div>
+        <p style="margin-top: 8px; font-size: 11px;">Copyright &copy; 2025 Chiakai Chang. All Rights Reserved.</p>
+    </footer>
 
     <script>
         // Script content removed as it's no longer needed.

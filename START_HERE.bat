@@ -82,23 +82,46 @@ echo  - Found npm.
 REM --- Step 3: Install/Update Google Gemini CLI ---
 echo.
 echo [3/5] Installing/Updating Google Gemini CLI...
-call npm install -g @google/gemini-cli
+
+where gemini >nul 2>nul
 if %errorlevel% neq 0 (
-    echo.
-    echo  - ERROR: Failed to install/update @google/gemini-cli. Please check your npm installation.
-    echo  - You might need to run your terminal as an administrator.
-    echo.
-    pause
-    exit /b 1
+    echo  - Gemini CLI not found. Installing...
+    call npm install -g @google/gemini-cli
+    if %errorlevel% neq 0 (
+        echo.
+        echo  - ERROR: Failed to install @google/gemini-cli. Please check your npm installation.
+        echo  - You might need to run your terminal as an administrator.
+        echo.
+        pause
+        exit /b 1
+    )
+    echo  - Gemini CLI installed successfully.
+) else (
+    echo  - Google Gemini CLI is already installed.
+    set /p update_choice="  - Do you want to check for updates? (y/N): "
+    if /i "%update_choice%"=="y" (
+        echo  - Checking for updates...
+        call npm install -g @google/gemini-cli
+        if %errorlevel% neq 0 (
+            echo.
+            echo  - ERROR: Failed to update @google/gemini-cli. Please check your npm installation.
+            echo  - You might need to run your terminal as an administrator.
+            echo.
+            pause
+            exit /b 1
+        )
+        echo  - Update check complete.
+    ) else (
+        echo  - Skipping update.
+    )
 )
-echo  - Google Gemini CLI is installed/updated.
 
 
 REM --- Step 4: Install Python packages ---
 echo.
 echo [4/5] Installing required Python packages...
 
-"%PYTHON_EXE%" -m pip install -r requirements.txt --quiet --disable-pip-version-check
+"%PYTHON_EXE%" -m pip install -r requirements.txt --disable-pip-version-check
 if %errorlevel% neq 0 (
     echo  - ERROR: Failed to install required packages.
     pause

@@ -81,7 +81,7 @@ def run_agent(agent: str, mode: str, vars_map: dict, retries: int = 3, delay: in
     final_prompt = "\n".join(prompt_parts)
 
     cmd = [found_agent_path]
-    if mode in ["PLAN", "PLAN_FROM_SLIDES", "SUMMARIZE_TITLE", "VALIDATE_MEMO", "VALIDATE_SLIDE", "DECK", "VALIDATE_DECK"]:
+    if mode in ["PLAN", "PLAN_FROM_SLIDES", "ANALYZE_SOURCE_DOCUMENT", "VALIDATE_ANALYSIS", "VALIDATE_MEMO", "VALIDATE_SLIDE", "DECK", "VALIDATE_DECK"]:
         cmd.extend(["--output-format", "json"])
 
     for attempt in range(retries):
@@ -111,6 +111,9 @@ def parse_ai_json_output(output: str, mode: str) -> dict:
 
 def get_config(args: argparse.Namespace) -> dict:
     cfg = yaml.safe_load(CONFIG_PATH.read_text(encoding="utf-8")) if CONFIG_PATH.exists() else {}
+    # Add default version if not in config, useful for metadata
+    if 'version' not in cfg:
+        cfg['version'] = '1.6.0'
     # Command-line args (from UI) override config.yaml
     cli_args = {k: v for k, v in vars(args).items() if v is not None}
     cfg.update(cli_args)
@@ -160,17 +163,110 @@ def main():
     if not cfg.get("source_file"):
         print_error("未提供來源檔案。請在 UI 中選擇或在 config.yaml 中設定。")
 
-    print_header("Phase 0: Initializing Run")
-    source_path = Path(cfg["source_file"]);
-    if not source_path.is_absolute(): source_path = ROOT / source_path
-    if not source_path.exists(): print_error(f"來源檔案不存在: {source_path}")
+    print_header("Phase 0: Initializing Run & Analyzing Source Document")
+    source_path = Path(cfg["source_file"])
+    if not source_path.is_absolute():
+        source_path = ROOT / source_path
+    if not source_path.exists():
+        print_error(f"來源檔案不存在: {source_path}")
 
-    title_output = run_agent(cfg["agent"], "SUMMARIZE_TITLE", {"source_file_path": str(source_path)})
-    run_title = parse_ai_json_output(title_output, "SUMMARIZE_TITLE").get("title", "Untitled_Run")
-    sanitized_title = re.sub(r'[^a-zA-Z0-9_-]', '', run_title.replace(" ", "_"))
-    output_dir = OUTPUT_ROOT / f"{datetime.now().strftime('%Y%m%d_%H%M%S')}_{sanitized_title}"
+    # --- ANALYZE_SOURCE_DOCUMENT with Rework Loop ---
+    perfect_analysis_data = {}
+    acceptable_analysis_data = {}
+    last_analysis_data_attempt = {}
+    MAX_ANALYSIS_REWORKS = 5
+
+    analysis_vars = {"source_file_path": str(source_path)}
+    current_analysis_data = {}
+
+    for attempt in range(MAX_ANALYSIS_REWORKS + 1):
+        if attempt > 0:
+            print_info(f"Reworking source document analysis... (Attempt {attempt}/{MAX_ANALYSIS_REWORKS})")
+        
+        analysis_output = run_agent(cfg["agent"], "ANALYZE_SOURCE_DOCUMENT", analysis_vars, retries=1)
+        if not analysis_output:
+            print_error(f"ANALYZE_SOURCE_DOCUMENT returned empty content on attempt {attempt}.", exit_code=None)
+            continue
+        
+        current_analysis_data = parse_ai_json_output(analysis_output, "ANALYZE_SOURCE_DOCUMENT")
+        last_analysis_data_attempt = current_analysis_data
+
+        print_info("Validating source document analysis...")
+        validation_vars = {
+            "analysis_data": json.dumps(current_analysis_data, ensure_ascii=False, indent=2),
+            "source_file_path": str(source_path)
+        }
+        validation_json = run_agent(cfg["agent"], "VALIDATE_ANALYSIS", validation_vars, retries=2)
+        
+        validation_result = {"is_valid": False, "is_acceptable": False, "feedback": "Validation agent returned no response."}
+        if validation_json:
+            validation_result = parse_ai_json_output(validation_json, "VALIDATE_ANALYSIS")
+
+        if validation_result.get("is_valid", False):
+            print_success("Perfect source document analysis passed. Finishing.")
+            perfect_analysis_data = current_analysis_data
+            break
+        elif validation_result.get("is_acceptable", False):
+            print_success("Source document analysis 'acceptable'. Storing as fallback and continuing.")
+            acceptable_analysis_data = current_analysis_data
+        
+        feedback = validation_result.get("feedback", "No feedback provided.")
+        print_error(f"Source document analysis failed. Feedback: {feedback}", exit_code=None)
+        analysis_vars["rework_feedback"] = feedback
+
+    # After the loop, decide which version to use
+    final_analysis_data = {}
+    if perfect_analysis_data:
+        final_analysis_data = perfect_analysis_data
+    elif acceptable_analysis_data:
+        print_info("Using best 'acceptable' version of the source document analysis.")
+        final_analysis_data = acceptable_analysis_data
+    elif last_analysis_data_attempt:
+        print_error("No valid or acceptable analysis found. Using the last raw attempt with a warning.", exit_code=None)
+        final_analysis_data = last_analysis_data_attempt
+    
+    if not final_analysis_data:
+        print_error("Failed to generate any analysis content. Using placeholders.", exit_code=1)
+
+    # --- Create Output Directory and Save Overview ---
+    project_title = final_analysis_data.get("project_title", "Untitled_Run")
+    sanitized_title = re.sub(r'[^a-zA-Z0-9_-]', '', project_title.replace(" ", "_"))
+    
+    run_datetime = datetime.now()
+    output_dir = OUTPUT_ROOT / f"{run_datetime.strftime('%Y%m%d_%H%M%S')}_{sanitized_title}"
     output_dir.mkdir(parents=True)
     print_success(f"Created unique output directory: {output_dir.relative_to(ROOT)}")
+
+    # Prepare and save the rich overview.md
+    doc_title = final_analysis_data.get('document_title', 'N/A')
+    doc_subtitle = final_analysis_data.get('document_subtitle')
+    doc_authors = final_analysis_data.get('document_authors', 'N/A')
+    pub_info = final_analysis_data.get('publication_info', 'N/A')
+    summary = final_analysis_data.get('summary', 'No summary was generated.')
+    overview = final_analysis_data.get('overview', 'No overview was generated.')
+    
+    front_matter = {
+        "project_title": project_title,
+        "document_title": doc_title,
+        "document_subtitle": doc_subtitle,
+        "document_authors": doc_authors,
+        "publication_info": pub_info,
+        "generation_date": run_datetime.strftime('%Y-%m-%d'),
+        "generated_by": f"PPTPlaner {cfg.get('version', 'N/A')}",
+        "source_file": source_path.name
+    }
+    overview_yaml = yaml.dump(front_matter, allow_unicode=True, default_flow_style=False, sort_keys=False)
+
+    body_title_line = f"# Project Overview: {doc_title}"
+    body_author_line = f"> *By {doc_authors}, {pub_info}*" if doc_authors and pub_info and doc_authors != 'N/A' and pub_info != 'N/A' else ""
+    body_summary_section = f"## 摘要 (Summary)\n\n{summary}"
+    body_overview_section = f"## 總覽 (Overview)\n\n{overview}"
+    
+    overview_content = f"---\n{overview_yaml}---\n\n{body_title_line}\n\n{body_author_line}\n\n{body_summary_section}\n\n{body_overview_section}\n".replace("\n\n\n", "\n\n")
+
+    overview_path = output_dir / "overview.md"
+    overview_path.write_text(overview_content, encoding="utf-8")
+    print_success(f"Rich project overview saved to: {overview_path.name}")
 
     slides_dir = output_dir / "slides"; notes_dir = output_dir / "notes"; guide_file = output_dir / "guide.html"
     plan_json_path = output_dir / ".plan.json"
@@ -343,7 +439,13 @@ def main():
                         print_error(f"Memo generation for page {page} returned empty content on attempt {attempt}.", exit_code=None)
                         continue
                     
-                    last_memo_attempt = current_attempt_content
+                    # Pre-process to strip markdown fences before validation and saving
+                    match = re.search(r'^```(?:markdown)?\n(.*?)\n```$', current_attempt_content, re.DOTALL | re.IGNORECASE)
+                    if match:
+                        print_info("Stripping markdown fences from AI-generated memo.")
+                        last_memo_attempt = match.group(1).strip()
+                    else:
+                        last_memo_attempt = current_attempt_content
 
                     print_info(f"Validating memo for page {page}...")
                     validation_vars = {"slide_content": slide_content, "memo_content": last_memo_attempt}
