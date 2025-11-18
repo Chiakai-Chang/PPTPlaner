@@ -64,17 +64,22 @@
   <div class="container">
     <h1>{{ project_info.title }}</h1>
     <p class="subtitle">{{ project_info.summary }}</p>
-    {% if project_info.overview_html %}
-    <div class="hr"></div>
-    <div class="rendered-content" style="font-size: 15px; padding-bottom: 10px;">
-        {{ project_info.overview_html | safe }}
-    </div>
+    {% if project_info.author_info_text %}
+    <em style="font-size: 15px; color: var(--muted);">{{ project_info.author_info_text }}</em>
     {% endif %}
   </div>
 </header>
 
 <main class="container">
+  {% if project_info.overview_html %}
+  <div class="rendered-content" style="font-size: 15px; padding: 15px 0;">
+      {{ project_info.overview_html | safe }}
+  </div>
   <div class="hr"></div>
+  {% else %}
+  <div class="hr"></div>
+  {% endif %}
+  
   {% for page in pages %}
         <div class="page" id="page-{{ loop.index }}">
             <div class="slide">
