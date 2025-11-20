@@ -20,26 +20,13 @@
   h1{margin:6px 0 2px; font-size:22px;}
   p.subtitle{margin:0 0 10px; color:var(--muted); font-size:14px;}
   .toolbar{display:flex; gap:8px; flex-wrap:wrap; align-items:center; margin:8px 0 12px;}
-  input[type="search"], input[type="text"]{padding:10px 12px; border:1px solid var(--border); border-radius:12px; background:var(--card); color:var(--fg); outline:none; min-width:260px;}
-  button{padding:10px 12px; border:1px solid var(--border); border-radius:12px; background:var(--card); color:var(--fg); cursor:pointer;}
-  button.primary{background:var(--accent); color:white; border-color:var(--accent-2);}
-  button.ghost{background:transparent;}
-  .grid{display:grid; grid-template-columns: 1fr 1fr; gap:12px; align-items:start;}
-  @media (max-width: 900px){ .grid{grid-template-columns:1fr;} }
-  .row{background:var(--card); border:1px solid var(--border); border-radius:16px; padding:14px;}
-  .row h3{margin:0 0 10px; font-size:15px;}
-  .row small{color:var(--muted);}
+  button{padding:8px 12px; font-size: 14px; border:1px solid var(--border); border-radius:12px; background:var(--card); color:var(--fg); cursor:pointer;}
+  button:hover{background-color: var(--border);}
+  .hr{height:1px; background:var(--border); margin:10px 0;}
+  .footer{color:var(--muted); font-size:12px; padding:20px 0 40px; text-align:center;}
   .meta{display:flex; flex-wrap:wrap; gap:10px; margin:6px 0 8px;}
   .meta a{color:var(--accent); text-decoration:none;}
   .meta a:hover{text-decoration:underline;}
-  .pill{display:inline-flex; align-items:center; gap:6px; padding:3px 10px; border:1px solid var(--border); border-radius:999px; background:var(--pill); color:var(--fg); font-size:12px;}
-  textarea{width:100%; min-height:140px; padding:10px; border:1px solid var(--border); border-radius:12px; background:var(--bg); color:var(--fg);}
-  .buttons{display:flex; gap:8px; align-items:center; margin-top:8px;}
-  .hint{font-size:12px; color:var(--muted);}
-  .hr{height:1px; background:var(--border); margin:10px 0;}
-  .footer{color:var(--muted); font-size:12px; padding:20px 0 40px; text-align:center;}
-  .badge{font-size:11px; padding:2px 8px; border-radius:999px; border:1px solid var(--border); background:var(--card); color:var(--muted);}
-  .ok{color:var(--ok)} .warn{color:var(--warn)} .bad{color:var(--bad)}
 
   /* --- Layout Styles for side-by-side view --- */
   .page { display: flex; border-bottom: 1px solid var(--border); padding: 20px 0; margin-bottom: 20px; }
@@ -48,6 +35,31 @@
   h2 { border-bottom: 1px solid var(--border); padding-bottom: 10px; color: var(--fg); font-size: 18px; margin-top: 0; }
   pre { background: var(--card); padding: 15px; border-radius: 8px; white-space: pre-wrap; word-wrap: break-word; border: 1px solid var(--border); font-family: Consolas, Monaco, 'Andale Mono', 'Ubuntu Mono', monospace; }
   
+  /* --- SVG & Toggle Styles --- */
+  .slide-toolbar { display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px; }
+
+  .svg-container {
+    position: relative;
+    width: 100%;
+    padding-bottom: 56.25%; /* 16:9 Aspect Ratio */
+    height: 0;
+    overflow: hidden;
+    margin-bottom: 15px;
+    border-radius: 8px;
+    background-color: var(--card);
+  }
+  .svg-container svg {
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    border-radius: 8px;
+    box-shadow: 0 4px 15px -2px rgba(0,0,0,0.08);
+  }
+
+  .slide-view-svg .no-svg-placeholder { aspect-ratio: 16/9; background-color: var(--card); border: 2px dashed var(--border); border-radius: 8px; display: flex; justify-content: center; align-items: center; color: var(--muted); font-size: 14px; }
+
   /* Generic styles for rendered markdown content */
   .rendered-content h1, .rendered-content h2, .rendered-content h3, .rendered-content h4, .rendered-content h5, .rendered-content h6 { border-bottom: none; padding-bottom: 5px; margin-top: 20px; }
   .rendered-content ul, .rendered-content ol { padding-left: 25px; }
@@ -81,22 +93,48 @@
   {% endif %}
   
   {% for page in pages %}
-        <div class="page" id="page-{{ loop.index }}">
+        <div class="page" id="page-{{ page.id }}">
             <div class="slide">
-                <h2>Slide {{ page.id }}</h2>
-                <div class="rendered-content">
+                <div class="slide-toolbar">
+                    <h2>Slide {{ page.id }}</h2>
+                    {% if page.slide_svg_content %}
+                    <button class="toggle-view-btn" data-page-id="{{ page.id }}">顯示文字</button>
+                    {% endif %}
+                </div>
+
+                {% if page.slide_svg_content %}
+                <div class="slide-view-svg" id="svg-view-{{ page.id }}">
+                    <div class="svg-container">
+                        {{ page.slide_svg_content | safe }}
+                    </div>
+                    
+                    {% if page.conceptual_svg_content %}
+                        <div class="hr" style="margin: 20px 0;"></div>
+                        <div class="svg-container">
+                            {{ page.conceptual_svg_content | safe }}
+                        </div>
+                    {% endif %}
+                </div>
+
+                <div class="slide-view-text rendered-content" id="text-view-{{ page.id }}" style="display: none;">
                     {{ page.slide_content_html | safe }}
                 </div>
+                {% else %}
+                {# If no SVG, just show the text content directly #}
+                <div class="slide-view-text rendered-content" id="text-view-{{ page.id }}">
+                    {{ page.slide_content_html | safe }}
+                </div>
+                {% endif %}
             </div>
             <div class="notes">
                 <h2>Notes for Slide {{ page.id }}</h2>
-                <div id="note-rendered-{{ loop.index }}" class="note-content rendered-content">
-                    {{ page.note_content.html | safe }}
+                <div class="note-content rendered-content">
+                    {{ page.note_content_html | safe }}
                 </div>
             </div>
         </div>
-        {% endfor %}
-    </main>
+  {% endfor %}
+</main>
 
     <footer class="footer">
         <div class="hr" style="margin: 40px 0 20px;"></div>
@@ -110,7 +148,29 @@
     </footer>
 
     <script>
-        // Script content removed as it's no longer needed.
+        document.addEventListener('DOMContentLoaded', function() {
+            const toggleButtons = document.querySelectorAll('.toggle-view-btn');
+            toggleButtons.forEach(button => {
+                button.addEventListener('click', function() {
+                    const pageId = this.dataset.pageId;
+                    const svgView = document.getElementById(`svg-view-${pageId}`);
+                    const textView = document.getElementById(`text-view-${pageId}`);
+
+                    if (svgView && textView) {
+                        const isSvgVisible = svgView.style.display !== 'none';
+                        if (isSvgVisible) {
+                            svgView.style.display = 'none';
+                            textView.style.display = 'block';
+                            this.textContent = '顯示圖像';
+                        } else {
+                            svgView.style.display = 'block';
+                            textView.style.display = 'none';
+                            this.textContent = '顯示文字';
+                        }
+                    }
+                });
+            });
+        });
     </script>
 </body>
 </html>

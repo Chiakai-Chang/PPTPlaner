@@ -52,7 +52,7 @@ def run_command(cmd: list[str], input_text: str | None = None) -> subprocess.Com
     except subprocess.CalledProcessError as e:
         print_error(f"指令執行失敗 (Exit Code: {e.returncode}): {" ".join(e.cmd)}\n  STDOUT: {e.stdout.strip()}\n  STDERR: {e.stderr.strip()}")
 
-def run_agent(agent: str, mode: str, vars_map: dict, retries: int = 3, delay: int = 5) -> str:
+def run_agent(agent: str, mode: str, vars_map: dict, retries: int = 3, delay: int = 5, model_name: str | None = None) -> str:
     agent_cmd, found_agent_path = agent.lower().strip(), None
     scripts_path_from_env = os.environ.get("PPTPLANER_SCRIPTS_PATH")
     if scripts_path_from_env:
@@ -81,43 +81,207 @@ def run_agent(agent: str, mode: str, vars_map: dict, retries: int = 3, delay: in
     final_prompt = "\n".join(prompt_parts)
 
     cmd = [found_agent_path]
-    if mode in ["PLAN", "PLAN_FROM_SLIDES", "ANALYZE_SOURCE_DOCUMENT", "VALIDATE_ANALYSIS", "VALIDATE_MEMO", "VALIDATE_SLIDE", "DECK", "VALIDATE_DECK"]:
+    if model_name:
+        cmd.extend(["-m", model_name])
+    if mode in ["PLAN", "PLAN_FROM_SLIDES", "ANALYZE_SOURCE_DOCUMENT", "VALIDATE_ANALYSIS", "VALIDATE_MEMO", "DECK", "VALIDATE_DECK", "VALIDATE_SLIDE_SVG", "VALIDATE_CONCEPTUAL_SVG"]:
         cmd.extend(["--output-format", "json"])
 
     for attempt in range(retries):
         print_info(f"Calling {agent_cmd.capitalize()} for {mode}... (Attempt {attempt + 1}/{retries})")
-        result = run_command(cmd, input_text=final_prompt)
-        output = result.stdout.strip()
-        if output:
-            return output # Success
-        
+        try:
+            result = run_command(cmd, input_text=final_prompt)
+            output = result.stdout.strip()
+            if output:
+                return output # Success
+
+            # This case handles empty output, which might not be an error but requires a retry.
+            print_error(f"AI returned empty response for {mode}.", exit_code=None)
+
+        except subprocess.CalledProcessError as e:
+            # This case handles when the command itself fails (e.g., API error)
+            stderr_lower = e.stderr.lower()
+            if "authentication" in stderr_lower or "login required" in stderr_lower:
+                print_error("認證失敗或過期 (Authentication failed or expired)。", exit_code=None)
+                print_info("請在瀏覽器中完成登入，或在另一個終端機中執行 `gemini auth login`。")
+                # No longer blocking with input(), let the GUI handle the pause.
+            elif "exhausted" in stderr_lower or "quota" in stderr_lower:
+                print_error("API quota 已用盡 (API quota exhausted)。", exit_code=None)
+                print_info("請在 GUI 中選擇 '繼續' 來等待配額恢復，或選擇 '切換模型' 來嘗試其他模型。")
+                # No longer blocking with input(), let the GUI handle the pause.
+            else:
+                print_error(f"指令執行失敗 (Exit Code: {e.returncode}): {" ".join(e.cmd)}\n  STDERR: {e.stderr.strip()}", exit_code=None)
+
         if attempt < retries - 1:
-            print_error(f"AI returned empty response for {mode}. Retrying in {delay}s...", exit_code=None)
+            print_info(f"Retrying in {delay}s...")
             time.sleep(delay)
 
-    print_error(f"AI failed to generate a response for {mode} after {retries} attempts.", exit_code=None)
+    print_error(f"AI failed to generate a response for {mode} after {retries} attempts.", exit_code=1)
     return "" # Return empty string if all retries fail
 
 def parse_ai_json_output(output: str, mode: str) -> dict:
+    """
+    Parses the AI's output, handling raw JSON, JSON in markdown fences,
+    and the gemini tool's wrapper object.
+    """
     try:
-        cli_output_obj = json.loads(output)
-        response_str = cli_output_obj.get("response", "{}")
-        if not response_str: print_error(f"AI 回應為空。收到的內容: {output}")
-        # A more robust regex to find the JSON block
-        match = re.search(r"```(?:json)?\s*({.*?})\s*```", response_str, re.DOTALL)
-        json_str = match.group(1).strip() if match else response_str
-        return json.loads(json_str)
-    except (json.JSONDecodeError, AttributeError): print_error(f"{mode} 階段輸出不是有效的 JSON。收到的內容: {output}")
+        # First, try to strip markdown fences from the entire output string.
+        match = re.search(r"```(?:json)?\s*({.*?})\s*```", output, re.DOTALL)
+        json_str = match.group(1).strip() if match else output.strip()
+
+        # Now, parse the cleaned/original string.
+        data = json.loads(json_str)
+
+        # If the parsed data has a "response" field and it's a string,
+        # it's likely the gemini tool's wrapper. The actual payload is inside.
+        if "response" in data and isinstance(data["response"], str):
+            nested_str = data["response"]
+            # The nested string could ALSO have markdown fences.
+            nested_match = re.search(r"```(?:json)?\s*({.*?})\s*```", nested_str, re.DOTALL)
+            final_json_str = nested_match.group(1).strip() if nested_match else nested_str.strip()
+            return json.loads(final_json_str)
+        else:
+            # Otherwise, the parsed data is the direct payload.
+            return data
+    except (json.JSONDecodeError, AttributeError) as e:
+        print_error(f"{mode} 階段輸出不是有效的 JSON。收到的內容: {output}\nError: {e}", exit_code=1)
 
 def get_config(args: argparse.Namespace) -> dict:
     cfg = yaml.safe_load(CONFIG_PATH.read_text(encoding="utf-8")) if CONFIG_PATH.exists() else {}
     # Add default version if not in config, useful for metadata
     if 'version' not in cfg:
         cfg['version'] = '1.6.0'
+    # Add defaults for new SVG settings
+    if 'slide_svg_max_reworks' not in cfg:
+        cfg['slide_svg_max_reworks'] = 5
+    if 'conceptual_svg_max_reworks' not in cfg:
+        cfg['conceptual_svg_max_reworks'] = 5
+        
     # Command-line args (from UI) override config.yaml
     cli_args = {k: v for k, v in vars(args).items() if v is not None}
     cfg.update(cli_args)
     return cfg
+
+def generate_svgs(cfg: dict, pages: list, output_dir: Path, slides_dir: Path, notes_dir: Path, model_name: str | None = None):
+    """Generates Slide SVGs and Conceptual SVGs for each page."""
+    print_header(f"Phase 2c: Generating SVGs ({len(pages)} pages)")
+
+    for item in pages:
+        page, topic = item["page"], item["topic"]
+        slide_path = slides_dir / f"{page}_{topic}.md"
+        note_path = notes_dir / f"note-{page}_{topic}-zh.md"
+
+        if not slide_path.exists():
+            print_error(f"Skipping SVG generation for page {page} as its slide MD file does not exist.", exit_code=None)
+            continue
+        
+        slide_content = slide_path.read_text(encoding="utf-8")
+        memo_content = note_path.read_text(encoding="utf-8") if note_path.exists() else ""
+
+        # --- 1. Slide SVG Generation ---
+        print_info(f"Generating Slide SVG for page {page}...")
+        slide_svg_path = slides_dir / f"slide_{page}.svg"
+        
+        perfect_slide_svg = ""
+        acceptable_slide_svg = ""
+        last_slide_svg_attempt = ""
+        MAX_SLIDE_SVG_REWORKS = cfg.get("slide_svg_max_reworks", 5)
+
+        svg_vars = {"slide_content": slide_content}
+
+        for attempt in range(MAX_SLIDE_SVG_REWORKS + 1):
+            if attempt > 0:
+                print_info(f"Reworking Slide SVG for page {page}... (Attempt {attempt}/{MAX_SLIDE_SVG_REWORKS})")
+            
+            raw_svg_attempt = run_agent(cfg["agent"], "CREATE_SLIDE_SVG", svg_vars, retries=1, model_name=model_name)
+            
+            # Attempt to extract SVG from a potentially verbose response
+            svg_match = re.search(r"<svg.*?</svg>", raw_svg_attempt, re.DOTALL)
+            current_svg_attempt = svg_match.group(0) if svg_match else raw_svg_attempt
+
+            if not current_svg_attempt or not current_svg_attempt.strip().startswith("<svg"):
+                print_error(f"Slide SVG generation for page {page} returned invalid content on attempt {attempt}.", exit_code=None)
+                continue
+            
+            last_slide_svg_attempt = current_svg_attempt
+
+            validation_vars = {"svg_code": last_slide_svg_attempt}
+            validation_json = run_agent(cfg["agent"], "VALIDATE_SLIDE_SVG", validation_vars, retries=2, model_name=model_name)
+            validation_result = parse_ai_json_output(validation_json, "VALIDATE_SLIDE_SVG")
+
+            if validation_result.get("is_valid", False):
+                print_success(f"Perfect Slide SVG validation passed for page {page}.")
+                perfect_slide_svg = last_slide_svg_attempt
+                break
+            elif validation_result.get("is_acceptable", False):
+                print_success(f"Slide SVG validation 'acceptable' for page {page}.")
+                acceptable_slide_svg = last_slide_svg_attempt
+            
+            feedback = validation_result.get("feedback", "No feedback provided.")
+            print_error(f"Slide SVG validation failed for page {page}. Feedback: {feedback}", exit_code=None)
+            svg_vars["rework_feedback"] = feedback
+
+        final_slide_svg = perfect_slide_svg or acceptable_slide_svg or last_slide_svg_attempt
+        if final_slide_svg:
+            slide_svg_path.write_text(final_slide_svg, encoding="utf-8")
+            print_success(f"  Slide SVG saved for page {page}")
+
+        # --- 2. Conceptual SVG Generation ---
+        print_info(f"Generating Conceptual SVG for page {page}...")
+        conceptual_svg_path = slides_dir / f"conceptual_{page}.svg"
+        
+        perfect_conceptual_svg = ""
+        acceptable_conceptual_svg = ""
+        last_conceptual_svg_attempt = ""
+        MAX_CONCEPTUAL_SVG_REWORKS = cfg.get("conceptual_svg_max_reworks", 5)
+
+        conceptual_vars = {"slide_content": slide_content, "memo_content": memo_content}
+
+        for attempt in range(MAX_CONCEPTUAL_SVG_REWORKS + 1):
+            if attempt > 0:
+                print_info(f"Reworking Conceptual SVG for page {page}... (Attempt {attempt}/{MAX_CONCEPTUAL_SVG_REWORKS})")
+
+            raw_conceptual_svg = run_agent(cfg["agent"], "CREATE_CONCEPTUAL_SVG", conceptual_vars, retries=1, model_name=model_name)
+
+            if "NO_CONCEPTUAL_SVG_NEEDED" in raw_conceptual_svg:
+                print_info(f"Agent decided no conceptual SVG is needed for page {page}.")
+                last_conceptual_svg_attempt = "" # Ensure no file is written
+                break
+            
+            if "CONCEPTUAL_SVG_FAILED" in raw_conceptual_svg:
+                print_error(f"Conceptual SVG generation failed for page {page} on attempt {attempt}.", exit_code=None)
+                continue
+
+            # Attempt to extract SVG from a potentially verbose response
+            svg_match = re.search(r"<svg.*?</svg>", raw_conceptual_svg, re.DOTALL)
+            current_conceptual_svg = svg_match.group(0) if svg_match else raw_conceptual_svg
+
+            if not current_conceptual_svg or not current_conceptual_svg.strip().startswith("<svg"):
+                print_error(f"Conceptual SVG generation for page {page} returned invalid content on attempt {attempt}.", exit_code=None)
+                continue
+
+            last_conceptual_svg_attempt = current_conceptual_svg
+            
+            validation_vars = {"svg_code": last_conceptual_svg_attempt, "slide_content": slide_content, "memo_content": memo_content}
+            validation_json = run_agent(cfg["agent"], "VALIDATE_CONCEPTUAL_SVG", validation_vars, retries=2, model_name=model_name)
+            validation_result = parse_ai_json_output(validation_json, "VALIDATE_CONCEPTUAL_SVG")
+
+            if validation_result.get("is_valid", False):
+                print_success(f"Perfect Conceptual SVG validation passed for page {page}.")
+                perfect_conceptual_svg = last_conceptual_svg_attempt
+                break
+            elif validation_result.get("is_acceptable", False):
+                print_success(f"Conceptual SVG validation 'acceptable' for page {page}.")
+                acceptable_conceptual_svg = last_conceptual_svg_attempt
+
+            feedback = validation_result.get("feedback", "No feedback provided.")
+            print_error(f"Conceptual SVG validation failed for page {page}. Feedback: {feedback}", exit_code=None)
+            conceptual_vars["rework_feedback"] = feedback
+
+        final_conceptual_svg = perfect_conceptual_svg or acceptable_conceptual_svg or last_conceptual_svg_attempt
+        if final_conceptual_svg:
+            conceptual_svg_path.write_text(final_conceptual_svg, encoding="utf-8")
+            print_success(f"  Conceptual SVG saved for page {page}")
+
 
 def _combine_slides_into_single_file(slides_dir: Path):
     """Finds all .md files, sorts them numerically, and combines them."""
@@ -149,9 +313,12 @@ def main():
     # Use dest='source_file' to match the key in config.yaml
     parser.add_argument("--source", dest="source_file", help="Source file to process")
     parser.add_argument("--agent", dest="agent", help="AI agent to use (e.g., gemini)")
+    parser.add_argument("--gemini-model", dest="gemini_model", help="Specific Gemini model to use (e.g., gemini-pro, gemini-1.5-pro-latest)")
     parser.add_argument("--custom-instruction", dest="custom_instruction", help="User-provided custom instruction for the MEMO agent")
     parser.add_argument("--slide-reworks", dest="slide_max_reworks", type=int, help="Override slide_max_reworks from config.yaml")
     parser.add_argument("--memo-reworks", dest="memo_max_reworks", type=int, help="Override memo_max_reworks from config.yaml")
+    parser.add_argument("--slide-svg-reworks", dest="slide_svg_max_reworks", type=int, help="Override slide_svg_max_reworks from config.yaml")
+    parser.add_argument("--conceptual-svg-reworks", dest="conceptual_svg_max_reworks", type=int, help="Override conceptual_svg_max_reworks from config.yaml")
     mode_group = parser.add_mutually_exclusive_group()
     mode_group.add_argument("--slides-only", action="store_true")
     mode_group.add_argument("--memos-only", action="store_true")
@@ -183,7 +350,7 @@ def main():
         if attempt > 0:
             print_info(f"Reworking source document analysis... (Attempt {attempt}/{MAX_ANALYSIS_REWORKS})")
         
-        analysis_output = run_agent(cfg["agent"], "ANALYZE_SOURCE_DOCUMENT", analysis_vars, retries=1)
+        analysis_output = run_agent(cfg["agent"], "ANALYZE_SOURCE_DOCUMENT", analysis_vars, retries=1, model_name=cfg.get("gemini_model"))
         if not analysis_output:
             print_error(f"ANALYZE_SOURCE_DOCUMENT returned empty content on attempt {attempt}.", exit_code=None)
             continue
@@ -196,7 +363,7 @@ def main():
             "analysis_data": json.dumps(current_analysis_data, ensure_ascii=False, indent=2),
             "source_file_path": str(source_path)
         }
-        validation_json = run_agent(cfg["agent"], "VALIDATE_ANALYSIS", validation_vars, retries=2)
+        validation_json = run_agent(cfg["agent"], "VALIDATE_ANALYSIS", validation_vars, retries=2, model_name=cfg.get("gemini_model"))
         
         validation_result = {"is_valid": False, "is_acceptable": False, "feedback": "Validation agent returned no response."}
         if validation_json:
@@ -277,7 +444,7 @@ def main():
         if not slide_file_path.is_absolute(): slide_file_path = ROOT / slide_file_path
         if not slide_file_path.exists(): print_error(f"簡報檔案不存在: {slide_file_path}")
         slide_content = slide_file_path.read_text(encoding="utf-8")
-        plan = parse_ai_json_output(run_agent(cfg["agent"], "PLAN_FROM_SLIDES", {"slide_file_content": slide_content, "source_file_path": str(source_path)}), "PLAN_FROM_SLIDES")
+        plan = parse_ai_json_output(run_agent(cfg["agent"], "PLAN_FROM_SLIDES", {"slide_file_content": slide_content, "source_file_path": str(source_path)}, model_name=cfg.get("gemini_model")), "PLAN_FROM_SLIDES")
         pages = plan.get("pages", [])
         for page_item in pages: page_item["topic"] = sanitize_filename(page_item["topic"])
         if not pages: print_error("AI 未能從簡報檔案生成任何頁面計畫。")
@@ -289,7 +456,7 @@ def main():
         args.memos_only = True
     else:
         print_header("Phase 1: AI Planning from Source Document")
-        plan = parse_ai_json_output(run_agent(cfg["agent"], "PLAN", {"source_file_path": str(source_path)}), "PLAN")
+        plan = parse_ai_json_output(run_agent(cfg["agent"], "PLAN", {"source_file_path": str(source_path)}, model_name=cfg.get("gemini_model")), "PLAN")
         pages = plan.get("pages", [])
         for page_item in pages: page_item["topic"] = sanitize_filename(page_item["topic"])
 
@@ -316,7 +483,7 @@ def main():
                 if attempt > 0:
                     print_info(f"Reworking entire slide deck... (Attempt {attempt}/{MAX_DECK_REWORKS})")
 
-                deck_output = run_agent(cfg["agent"], "DECK", deck_vars, retries=1)
+                deck_output = run_agent(cfg["agent"], "DECK", deck_vars, retries=1, model_name=cfg.get("gemini_model"))
                 if not deck_output:
                     print_error(f"Deck generation returned empty content on attempt {attempt}.", exit_code=None)
                     continue
@@ -332,7 +499,7 @@ def main():
 
                 print_info("Validating entire slide deck for consistency and flow...")
                 validation_vars = {"slides_json": json.dumps(generated_slides, ensure_ascii=False, indent=2)}
-                validation_json = run_agent(cfg["agent"], "VALIDATE_DECK", validation_vars, retries=2)
+                validation_json = run_agent(cfg["agent"], "VALIDATE_DECK", validation_vars, retries=2, model_name=cfg.get("gemini_model"))
                 
                 validation_result = {"is_valid": False, "is_acceptable": False, "feedback": "Validation agent returned no response."}
                 if validation_json:
@@ -433,7 +600,7 @@ def main():
                     if attempt > 0:
                         print_info(f"Reworking memo for page {page}... (Attempt {attempt}/{MAX_REWORKS})")
                     
-                    current_attempt_content = run_agent(cfg["agent"], "MEMO", memo_vars, retries=1)
+                    current_attempt_content = run_agent(cfg["agent"], "MEMO", memo_vars, retries=1, model_name=cfg.get("gemini_model"))
 
                     if not current_attempt_content or not current_attempt_content.strip():
                         print_error(f"Memo generation for page {page} returned empty content on attempt {attempt}.", exit_code=None)
@@ -449,7 +616,7 @@ def main():
 
                     print_info(f"Validating memo for page {page}...")
                     validation_vars = {"slide_content": slide_content, "memo_content": last_memo_attempt}
-                    validation_json = run_agent(cfg["agent"], "VALIDATE_MEMO", validation_vars, retries=2)
+                    validation_json = run_agent(cfg["agent"], "VALIDATE_MEMO", validation_vars, retries=2, model_name=cfg.get("gemini_model"))
                     validation_result = parse_ai_json_output(validation_json, "VALIDATE_MEMO")
 
                     if validation_result.get("is_valid", False):
@@ -499,6 +666,11 @@ AI 未能為此頁投影片生成備忘稿，所有嘗試均返回空內容。
                 note_path.write_text(final_memo_content, encoding="utf-8")
                 if "> [!WARNING]" not in final_memo_content and "備忘稿生成失敗" not in final_memo_content:
                     print_success(f"  Memo saved for page {page}")
+    
+    # --- SVG Generation ---
+    if not args.slides_only:
+        generate_svgs(cfg, pages, output_dir, slides_dir, notes_dir, model_name=cfg.get("gemini_model"))
+
     print_header("Phase 3: Finalizing Output")
     # The build_guide.py script was not fully implemented, so we call it with basic args
     build_script_path = ROOT / "scripts" / "build_guide.py"
