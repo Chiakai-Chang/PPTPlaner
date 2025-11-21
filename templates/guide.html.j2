@@ -58,6 +58,20 @@
     box-shadow: 0 4px 15px -2px rgba(0,0,0,0.08);
   }
 
+  .conceptual-svg-container {
+    width: 100%;
+    margin-bottom: 15px;
+    border-radius: 8px;
+    background-color: var(--card);
+    padding: 10px;
+    border: 1px solid var(--border);
+  }
+  .conceptual-svg-container svg {
+    width: 100%;
+    height: auto;
+    display: block;
+  }
+
   .slide-view-svg .no-svg-placeholder { aspect-ratio: 16/9; background-color: var(--card); border: 2px dashed var(--border); border-radius: 8px; display: flex; justify-content: center; align-items: center; color: var(--muted); font-size: 14px; }
 
   /* Generic styles for rendered markdown content */
@@ -110,7 +124,7 @@
                     
                     {% if page.conceptual_svg_content %}
                         <div class="hr" style="margin: 20px 0;"></div>
-                        <div class="svg-container">
+                        <div class="conceptual-svg-container">
                             {{ page.conceptual_svg_content | safe }}
                         </div>
                     {% endif %}

@@ -115,14 +115,13 @@ def main():
                 if slide_svg_file.exists():
                     svg_text = slide_svg_file.read_text(encoding="utf-8")
                     # Remove width and height attributes to make it responsive
-                    svg_text = re.sub(r'\s(width|height)="[^"]*"', '', svg_text, count=2)
+                    svg_text = re.sub(r'\s(width|height)="[^"]*"', '', svg_text)
                     slide_svg_content = svg_text
                 
                 conceptual_svg_content = None
                 if conceptual_svg_file.exists():
-                    svg_text = conceptual_svg_file.read_text(encoding="utf-8")
-                    svg_text = re.sub(r'\s(width|height)="[^"]*"', '', svg_text, count=2)
-                    conceptual_svg_content = svg_text
+                    # For conceptual SVGs, we preserve the attributes so they can render with their natural aspect ratio.
+                    conceptual_svg_content = conceptual_svg_file.read_text(encoding="utf-8")
 
                 slide_content_raw = slide_path.read_text(encoding="utf-8") if slide_path.exists() else "[Slide not found]"
                 slide_content_html = md.render(slide_content_raw)

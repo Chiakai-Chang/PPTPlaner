@@ -1,15 +1,15 @@
-import re
-import threading
-import tkinter as tk
-from tkinter import filedialog, scrolledtext, font as tkFont, ttk
-import subprocess
-import sys
 import os
-import requests
+import re
+import sys
+import subprocess
 import threading
 import webbrowser
+import tkinter as tk
+from tkinter import filedialog, scrolledtext, font as tkFont, ttk
 
-version = "v2.0"
+import requests
+
+version = "v2.1"
 
 class App(tk.Tk):
     def __init__(self, available_models):
@@ -30,6 +30,7 @@ class App(tk.Tk):
         self.available_gemini_models = available_models
         self.source_file_path = tk.StringVar()
         self.slides_file_path = tk.StringVar()
+        self.generate_svg = tk.BooleanVar(value=True) # Add this line
         self.quota_event = threading.Event()
         self.quota_event.set() # Initially, no quota error, so allow to proceed
         self.current_gemini_model = None # Stores the currently selected Gemini model. None means default.
@@ -108,6 +109,13 @@ class App(tk.Tk):
         self.memo_reworks_spinbox = tk.Spinbox(rework_frame, from_=0, to=10, width=5, justify="center")
         self.memo_reworks_spinbox.pack(side="left")
         self.memo_reworks_spinbox.delete(0, "end"); self.memo_reworks_spinbox.insert(0, "5")
+
+        # --- SVG Generation Checkbox ---
+        options_frame = tk.Frame(self.new_generation_controls_frame)
+        options_frame.grid(row=8, column=0, columnspan=3, sticky="w", pady=5)
+        self.svg_checkbox = tk.Checkbutton(options_frame, text="生成 SVG (實驗性功能，會增加 token 用量)", variable=self.generate_svg)
+        self.svg_checkbox.pack(side="left")
+
         self.new_generation_controls_frame.grid_columnconfigure(0, weight=1)
 
         # Common elements packing will be handled by toggle_mode_inputs to ensure correct order
@@ -291,6 +299,8 @@ class App(tk.Tk):
                 return
 
             command = [sys.executable, orchestrate_script, "--source", source_file]
+            if not self.generate_svg.get():
+                command.append("--no-svg")
             if custom_instruction: command.extend(["--custom-instruction", custom_instruction])
             if slides_file: command.extend(["--plan-from-slides", slides_file])
             if self.current_gemini_model: command.extend(["--gemini-model", self.current_gemini_model])
@@ -337,35 +347,13 @@ class App(tk.Tk):
         except Exception as e:
             self.log_message(f"啟動程序時發生錯誤: {e}\n"); self.run_button.config(state="normal", text="開始生成")
 
-import re
-import threading
-import tkinter as tk
-from tkinter import filedialog, scrolledtext, font as tkFont, ttk
-import subprocess
-import sys
-import os
-import webbrowser
-import requests
-from html import unescape
-
-import re
-import threading
-import tkinter as tk
-from tkinter import filedialog, scrolledtext, font as tkFont, ttk
-import subprocess
-import sys
-import os
-import webbrowser
-import requests
-from html import unescape
-
 def fetch_available_models():
     """Fetches available Gemini model names from the gemini-cli GitHub documentation."""
     print("正在從 GitHub 官方文件讀取可用的 Gemini 模型，請稍候...")
     # I've updated the URL to the 'main' branch for the latest version.
     model_url = "https://raw.githubusercontent.com/google-gemini/gemini-cli/main/docs/cli/model.md"
     try:
-        response = requests.get(model_url, timeout=10)
+        response = requests.get(model_url, timeout=30, verify=False)
         response.raise_for_status()
         
         # Find all strings that look like gemini model IDs (e.g., gemini-2.5-pro)

@@ -265,11 +265,12 @@
 3.  **URL 轉義規則**: 如果你的程式碼中包含 URL (例如在 `<style>` 標籤中引入 Google 字體)，URL 中的任何 `&` 字元都**必須**被轉義為 `&amp;`。這對於確保 SVG 的有效性至關重要。
 4.  **絕不**可以包含任何對話、解釋、註解，或任何非 SVG 的文字。
 5.  **絕不**可以用 Markdown 標記 (如 ` ```svg ... ``` `) 包圍你的 SVG 程式碼。
-6.  SVG 程式碼本身應包含 `<style>` 區塊來定義字體、顏色等，並使用 `<animate>` 或 `<animateTransform>` 標籤來實現動畫。
+6.  **長寬比 (Aspect Ratio)**: SVG 的根元素**必須**包含 `viewBox="0 0 960 540"` 屬性，以確保為 16:9 的長寬比。
+7.  SVG 程式碼本身應包含 `<style>` 區塊來定義字體、顏色等，並使用 `<animate>` 或 `<animateTransform>` 標籤來實現動畫。
 
 **範例輸出**:
 ```xml
-<svg width="960" height="540" ...>
+<svg viewBox="0 0 960 540" xmlns="http://www.w3.org/2000/svg">
   <style>...</style>
   <defs>...</defs>
   <rect width="100%" height="100%" ... />
@@ -337,8 +338,9 @@
     *   一個純粹的 SVG 程式碼 (以 `<svg...>` 開頭)。
     *   字串 `NO_CONCEPTUAL_SVG_NEEDED`。
     *   字串 `CONCEPTUAL_SVG_FAILED`。
-2.  當輸出 SVG 時，**絕不**可以包含任何對話、解釋、註解，或任何非 SVG 的文字。
-3.  當輸出 SVG 時，**絕不**可以用 Markdown 標記 (如 ` ```svg ... ``` `) 包圍你的 SVG 程式碼。
+2.  **URL/文字轉義規則**: 如果你的程式碼中包含 URL (例如在 `<style>` 標籤中引入 Google 字體) 或任何文字內容，其中的任何 `&` 字元都**必須**被轉義為 `&amp;`。這對於確保 SVG 的有效性至關重要。
+3.  當輸出 SVG 時，**絕不**可以包含任何對話、解釋、註解，或任何非 SVG 的文字。
+4.  當輸出 SVG 時，**絕不**可以用 Markdown 標記 (如 ` ```svg ... ``` `) 包圍你的 SVG 程式碼。
 
 ---
 
@@ -350,7 +352,8 @@
 
 **檢驗規則**:
 1.  **技術正確性 (Technical Correctness)**:
-    *   SVG 語法是否有效？動畫是否能正常執行？
+    *   **有效語法 (Valid Syntax)**: SVG 語法是否有效？動畫是否能正常執行？
+    *   **實體轉義 (Entity Escaping)**: 檢查 `svg_code` 中是否存在未轉義的 `&` 字元。一個獨立的 `&` 是無效的 XML，必須被寫成 `&amp;`。如果發現，這是一個重大語法錯誤。
 2.  **內容關聯性 (Content Relevance)**:
     *   示意圖是否準確地、無誤地表達了 `slide_content` 和 `memo_content` 中的核心概念？
     *   圖中的標籤和流程是否與原始意圖相符？

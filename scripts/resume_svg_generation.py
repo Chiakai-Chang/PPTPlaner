@@ -162,6 +162,30 @@ def main():
     if not pages:
         print_error(f"Could not find any slide markdown files in '{slides_dir}' to resume from.")
 
+    # --- Progress Tracking Setup ---
+    progress_file = output_dir / ".svg_progress.json"
+    progress = {}
+    if progress_file.exists():
+        try:
+            progress = json.loads(progress_file.read_text(encoding="utf-8"))
+            print_info(f"Resuming from existing progress file: {progress_file.name}")
+        except json.JSONDecodeError:
+            print_error(f"Could not parse progress file {progress_file.name}. Starting fresh.", exit_code=None)
+            progress = {} # Reset progress if file is corrupt
+    
+    # Ensure all pages are in the progress file
+    all_pages_found = True
+    for item in pages:
+        page_id = item["page"]
+        if page_id not in progress:
+            all_pages_found = False
+            progress[page_id] = {"slide_svg": "pending", "conceptual_svg": "pending"}
+    
+    if not all_pages_found or not progress_file.exists():
+        # Save the initial or updated progress file
+        progress_file.write_text(json.dumps(progress, indent=4, ensure_ascii=False), encoding="utf-8")
+        print_info("Initialized or updated SVG progress tracking file.")
+
     # Directly call a copied/adapted version of the generate_svgs logic
     print_header(f"Resuming Run: Generating SVGs ({len(pages)} pages)")
 
@@ -178,96 +202,122 @@ def main():
         memo_content = note_path.read_text(encoding="utf-8") if note_path.exists() else ""
 
         # --- 1. Slide SVG Generation ---
-        print_info(f"Generating Slide SVG for page {page}...")
         slide_svg_path = slides_dir / f"slide_{page}.svg"
-        
-        perfect_slide_svg = ""
-        acceptable_slide_svg = ""
-        last_slide_svg_attempt = ""
+        if progress.get(page, {}).get("slide_svg") == "completed":
+            print_info(f"Skipping Slide SVG for page {page} (already completed).")
+        else:
+            print_info(f"Generating Slide SVG for page {page}...")
+            perfect_slide_svg = ""
+            acceptable_slide_svg = ""
+            last_slide_svg_attempt = ""
 
+            svg_vars = {"slide_content": slide_content}
 
-        svg_vars = {"slide_content": slide_content}
+            for attempt in range(MAX_SLIDE_SVG_REWORKS + 1):
+                if attempt > 0:
+                    print_info(f"Reworking Slide SVG for page {page}... (Attempt {attempt}/{MAX_SLIDE_SVG_REWORKS})")
+                
+                raw_svg_attempt = run_agent(args.agent, "CREATE_SLIDE_SVG", svg_vars, retries=1, model_name=args.gemini_model)
+                
+                # Attempt to extract SVG from a potentially verbose response
+                svg_match = re.search(r"<svg.*?</svg>", raw_svg_attempt, re.DOTALL)
+                current_svg_attempt = svg_match.group(0) if svg_match else raw_svg_attempt
 
-        for attempt in range(MAX_SLIDE_SVG_REWORKS + 1):
-            if attempt > 0:
-                print_info(f"Reworking Slide SVG for page {page}... (Attempt {attempt}/{MAX_SLIDE_SVG_REWORKS})")
-            
-            current_svg_attempt = run_agent(args.agent, "CREATE_SLIDE_SVG", svg_vars, retries=1, model_name=args.gemini_model)
-            if not current_svg_attempt or not current_svg_attempt.strip().startswith("<svg"):
-                print_error(f"Slide SVG generation for page {page} returned invalid content on attempt {attempt}.", exit_code=None)
-                continue
-            
-            last_slide_svg_attempt = current_svg_attempt
+                if not current_svg_attempt or not current_svg_attempt.strip().startswith("<svg"):
+                    print_error(f"Slide SVG generation for page {page} returned invalid content on attempt {attempt}.", exit_code=None)
+                    continue
+                
+                last_slide_svg_attempt = current_svg_attempt
 
-            validation_vars = {"svg_code": last_slide_svg_attempt}
-            validation_json = run_agent(args.agent, "VALIDATE_SLIDE_SVG", validation_vars, retries=2, model_name=args.gemini_model)
-            validation_result = parse_ai_json_output(validation_json, "VALIDATE_SLIDE_SVG")
+                validation_vars = {"svg_code": last_slide_svg_attempt}
+                validation_json = run_agent(args.agent, "VALIDATE_SLIDE_SVG", validation_vars, retries=2, model_name=args.gemini_model)
+                validation_result = parse_ai_json_output(validation_json, "VALIDATE_SLIDE_SVG")
 
-            if validation_result.get("is_valid", False):
-                print_success(f"Perfect Slide SVG validation passed for page {page}.")
-                perfect_slide_svg = last_slide_svg_attempt
-                break
-            elif validation_result.get("is_acceptable", False):
-                print_success(f"Slide SVG validation 'acceptable' for page {page}.")
-                acceptable_slide_svg = last_slide_svg_attempt
-            
-            feedback = validation_result.get("feedback", "No feedback provided.")
-            print_error(f"Slide SVG validation failed for page {page}. Feedback: {feedback}", exit_code=None)
-            svg_vars["rework_feedback"] = feedback
+                if validation_result.get("is_valid", False):
+                    print_success(f"Perfect Slide SVG validation passed for page {page}.")
+                    perfect_slide_svg = last_slide_svg_attempt
+                    break
+                elif validation_result.get("is_acceptable", False):
+                    print_success(f"Slide SVG validation 'acceptable' for page {page}.")
+                    acceptable_slide_svg = last_slide_svg_attempt
+                
+                feedback = validation_result.get("feedback", "No feedback provided.")
+                print_error(f"Slide SVG validation failed for page {page}. Feedback: {feedback}", exit_code=None)
+                svg_vars["rework_feedback"] = feedback
 
-        final_slide_svg = perfect_slide_svg or acceptable_slide_svg or last_slide_svg_attempt
-        if final_slide_svg:
-            slide_svg_path.write_text(final_slide_svg, encoding="utf-8")
-            print_success(f"  Slide SVG saved for page {page}")
+            final_slide_svg = perfect_slide_svg or acceptable_slide_svg or last_slide_svg_attempt
+            if final_slide_svg:
+                slide_svg_path.write_text(final_slide_svg, encoding="utf-8")
+                # Update progress
+                progress[page]["slide_svg"] = "completed"
+                progress_file.write_text(json.dumps(progress, indent=4, ensure_ascii=False), encoding="utf-8")
+                print_success(f"  Slide SVG saved for page {page}")
 
         # --- 2. Conceptual SVG Generation ---
-        print_info(f"Generating Conceptual SVG for page {page}...")
         conceptual_svg_path = slides_dir / f"conceptual_{page}.svg"
-        
-        perfect_conceptual_svg = ""
-        acceptable_conceptual_svg = ""
-        last_conceptual_svg_attempt = ""
+        if progress.get(page, {}).get("conceptual_svg") == "completed":
+            print_info(f"Skipping Conceptual SVG for page {page} (already completed).")
+        else:
+            print_info(f"Generating Conceptual SVG for page {page}...")
+            perfect_conceptual_svg = ""
+            acceptable_conceptual_svg = ""
+            last_conceptual_svg_attempt = ""
 
-        conceptual_vars = {"slide_content": slide_content, "memo_content": memo_content}
+            conceptual_vars = {"slide_content": slide_content, "memo_content": memo_content}
 
-        for attempt in range(MAX_CONCEPTUAL_SVG_REWORKS + 1):
-            if attempt > 0:
-                print_info(f"Reworking Conceptual SVG for page {page}... (Attempt {attempt}/{MAX_CONCEPTUAL_SVG_REWORKS})")
+            for attempt in range(MAX_CONCEPTUAL_SVG_REWORKS + 1):
+                if attempt > 0:
+                    print_info(f"Reworking Conceptual SVG for page {page}... (Attempt {attempt}/{MAX_CONCEPTUAL_SVG_REWORKS})")
 
-            current_conceptual_svg = run_agent(args.agent, "CREATE_CONCEPTUAL_SVG", conceptual_vars, retries=1, model_name=args.gemini_model)
+                raw_conceptual_svg = run_agent(args.agent, "CREATE_CONCEPTUAL_SVG", conceptual_vars, retries=1, model_name=args.gemini_model)
 
-            if "NO_CONCEPTUAL_SVG_NEEDED" in current_conceptual_svg:
-                print_info(f"Agent decided no conceptual SVG is needed for page {page}.")
-                last_conceptual_svg_attempt = ""
-                break
+                if "NO_CONCEPTUAL_SVG_NEEDED" in raw_conceptual_svg:
+                    print_info(f"Agent decided no conceptual SVG is needed for page {page}.")
+                    last_conceptual_svg_attempt = "NO_CONCEPTUAL_SVG_NEEDED" # Special marker
+                    break
+                
+                if "CONCEPTUAL_SVG_FAILED" in raw_conceptual_svg:
+                    print_error(f"Conceptual SVG generation failed for page {page} on attempt {attempt}.", exit_code=None)
+                    continue
 
-            if not current_conceptual_svg or not current_conceptual_svg.strip().startswith("<svg"):
-                print_error(f"Conceptual SVG generation for page {page} returned invalid content on attempt {attempt}.", exit_code=None)
-                continue
+                # Attempt to extract SVG from a potentially verbose response
+                svg_match = re.search(r"<svg.*?</svg>", raw_conceptual_svg, re.DOTALL)
+                current_conceptual_svg = svg_match.group(0) if svg_match else raw_conceptual_svg
 
-            last_conceptual_svg_attempt = current_conceptual_svg
+                if not current_conceptual_svg or not current_conceptual_svg.strip().startswith("<svg"):
+                    print_error(f"Conceptual SVG generation for page {page} returned invalid content on attempt {attempt}.", exit_code=None)
+                    continue
+
+                last_conceptual_svg_attempt = current_conceptual_svg
+                
+                validation_vars = {"svg_code": last_conceptual_svg_attempt, "slide_content": slide_content, "memo_content": memo_content}
+                validation_json = run_agent(args.agent, "VALIDATE_CONCEPTUAL_SVG", validation_vars, retries=2, model_name=args.gemini_model)
+                validation_result = parse_ai_json_output(validation_json, "VALIDATE_CONCEPTUAL_SVG")
+
+                if validation_result.get("is_valid", False):
+                    print_success(f"Perfect Conceptual SVG validation passed for page {page}.")
+                    perfect_conceptual_svg = last_conceptual_svg_attempt
+                    break
+                elif validation_result.get("is_acceptable", False):
+                    print_success(f"Conceptual SVG validation 'acceptable' for page {page}.")
+                    acceptable_conceptual_svg = last_conceptual_svg_attempt
+
+                feedback = validation_result.get("feedback", "No feedback provided.")
+                print_error(f"Conceptual SVG validation failed for page {page}. Feedback: {feedback}", exit_code=None)
+                conceptual_vars["rework_feedback"] = feedback
+
+            final_conceptual_svg = perfect_conceptual_svg or acceptable_conceptual_svg or last_conceptual_svg_attempt
             
-            validation_vars = {"svg_code": last_conceptual_svg_attempt, "slide_content": slide_content, "memo_content": memo_content}
-            validation_json = run_agent(args.agent, "VALIDATE_CONCEPTUAL_SVG", validation_vars, retries=2, model_name=args.gemini_model)
-            validation_result = parse_ai_json_output(validation_json, "VALIDATE_CONCEPTUAL_SVG")
+            # If we got a valid SVG, write it.
+            if final_conceptual_svg and final_conceptual_svg != "NO_CONCEPTUAL_SVG_NEEDED":
+                conceptual_svg_path.write_text(final_conceptual_svg, encoding="utf-8")
+                print_success(f"  Conceptual SVG saved for page {page}")
 
-            if validation_result.get("is_valid", False):
-                print_success(f"Perfect Conceptual SVG validation passed for page {page}.")
-                perfect_conceptual_svg = last_conceptual_svg_attempt
-                break
-            elif validation_result.get("is_acceptable", False):
-                print_success(f"Conceptual SVG validation 'acceptable' for page {page}.")
-                acceptable_conceptual_svg = last_conceptual_svg_attempt
-
-            feedback = validation_result.get("feedback", "No feedback provided.")
-            print_error(f"Conceptual SVG validation failed for page {page}. Feedback: {feedback}", exit_code=None)
-            conceptual_vars["rework_feedback"] = feedback
-
-        final_conceptual_svg = perfect_conceptual_svg or acceptable_conceptual_svg or last_conceptual_svg_attempt
-        if final_conceptual_svg:
-            conceptual_svg_path.write_text(final_conceptual_svg, encoding="utf-8")
-            print_success(f"  Conceptual SVG saved for page {page}")
-
+            # If the process finished (either by creating an SVG or deciding one wasn't needed), update progress.
+            if final_conceptual_svg:
+                progress[page]["conceptual_svg"] = "completed"
+                progress_file.write_text(json.dumps(progress, indent=4, ensure_ascii=False), encoding="utf-8")
+    
     # --- Final Step: Build Guide ---
     print_header("Phase 3: Finalizing Output")
     build_script_path = ROOT / "scripts" / "build_guide.py"
