@@ -9,7 +9,7 @@ from tkinter import filedialog, scrolledtext, font as tkFont, ttk
 
 import requests
 
-version = "v2.1"
+version = "v2.2"
 
 class App(tk.Tk):
     def __init__(self, available_models):
@@ -30,7 +30,7 @@ class App(tk.Tk):
         self.available_gemini_models = available_models
         self.source_file_path = tk.StringVar()
         self.slides_file_path = tk.StringVar()
-        self.generate_svg = tk.BooleanVar(value=True) # Add this line
+        self.generate_svg = tk.BooleanVar(value=False) # Add this line
         self.quota_event = threading.Event()
         self.quota_event.set() # Initially, no quota error, so allow to proceed
         self.current_gemini_model = None # Stores the currently selected Gemini model. None means default.
