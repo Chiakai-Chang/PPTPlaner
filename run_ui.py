@@ -9,7 +9,7 @@ from tkinter import filedialog, scrolledtext, font as tkFont, ttk
 
 import requests
 
-version = "v2.2"
+version = "v2.3"
 
 class App(tk.Tk):
     def __init__(self, available_models):
