@@ -11,7 +11,7 @@ import mimetypes
 
 import requests
 
-version = "v2.5"
+version = "v2.6"
 
 class App(tk.Tk):
     def __init__(self, available_models):
@@ -94,6 +94,14 @@ class App(tk.Tk):
         tk.Button(ei_top_frame, text="瀏覽...", command=self.browse_guide_html).grid(row=0, column=2, padx=2)
         tk.Button(ei_top_frame, text="讀取並列出頁面", command=self.load_slides_from_html, bg="#d0f0c0").grid(row=0, column=3, padx=10)
         ei_top_frame.grid_columnconfigure(1, weight=1)
+
+        # YouTube Input Section
+        yt_frame = tk.Frame(self.embed_images_frame)
+        yt_frame.pack(fill="x", padx=5, pady=(0, 5))
+        tk.Label(yt_frame, text="YouTube 影片 ID (選填):").pack(side="left")
+        self.youtube_id_var = tk.StringVar()
+        tk.Entry(yt_frame, textvariable=self.youtube_id_var, width=25).pack(side="left", padx=5)
+        tk.Label(yt_frame, text="(例如: dQw4w9WgXcQ，支援自動貼上網址)", fg="gray", font=("Arial", 9)).pack(side="left")
 
         # Middle section: Scrollable list of slides
         self.slide_list_container = tk.Frame(self.embed_images_frame, bd=2, relief="groove")
@@ -308,8 +316,60 @@ class App(tk.Tk):
             with open(html_path, "r", encoding="utf-8") as f:
                 content = f.read()
 
+            # --- YouTube Injection ---
+            yt_id = self.youtube_id_var.get().strip()
+            if yt_id:
+                # Simple parser to extract ID if user pastes full URL
+                if "v=" in yt_id:
+                    try: yt_id = yt_id.split("v=")[1].split("&")[0]
+                    except: pass
+                elif "youtu.be/" in yt_id:
+                    try: yt_id = yt_id.split("youtu.be/")[1].split("?")[0]
+                    except: pass
+                
+                # Responsive Video HTML Block
+                # Standard youtube domain is often more reliable for local file playback than nocookie
+                video_html = f"""
+                <div class="video-section" style="margin-bottom: 30px; margin-top: 10px;">
+                    <style>
+                        .video-responsive-wrapper {{
+                            position: relative;
+                            padding-bottom: 56.25%; /* 16:9 Ratio */
+                            height: 0;
+                            overflow: hidden;
+                            border-radius: 12px;
+                            background: #000;
+                            box-shadow: 0 4px 10px rgba(0,0,0,0.1);
+                        }}
+                        .video-responsive-wrapper iframe {{
+                            position: absolute;
+                            top: 0;
+                            left: 0;
+                            width: 100%;
+                            height: 100%;
+                            border: 0;
+                        }}
+                    </style>
+                    <div class="video-responsive-wrapper">
+                        <iframe 
+                            src="https://www.youtube.com/embed/{yt_id}?rel=0" 
+                            title="YouTube video player" 
+                            frameborder="0" 
+                            allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share" 
+                            allowfullscreen>
+                        </iframe>
+                    </div>
+                    <div class="hr" style="margin-top: 20px;"></div>
+                </div>
+                """
+                # Inject immediately after <main class="container">
+                if '<main class="container">' in content:
+                    content = content.replace('<main class="container">', f'<main class="container">\n{video_html}', 1)
+
             # Inject CSS and JS
             # We define styles for the toggle button and the image container.
+            # We also add sticky positioning to the left column (.slide) so it stays visible 
+            # while scrolling through long notes in the right column (.notes).
             style_script = """
             <style>
                 .img-text-toggle-btn {
@@ -323,12 +383,55 @@ class App(tk.Tk):
                     transition: background 0.2s;
                 }
                 .img-text-toggle-btn:hover { background: #4338ca; }
+                
                 .slide-img-container img {
                     max-width: 100%;
                     height: auto;
                     border: 1px solid #e5e7eb;
                     border-radius: 8px;
                     box-shadow: 0 2px 4px rgba(0,0,0,0.05);
+                }
+
+                /* Layout Improvements for Sticky Slide */
+                .page {
+                    display: flex;
+                    border-bottom: 1px solid var(--border);
+                    padding: 30px 0;
+                    margin-bottom: 0;
+                    align-items: flex-start; /* Align to top */
+                }
+                
+                .slide {
+                    flex: 1;
+                    padding-right: 30px;
+                    border-right: 1px solid var(--border);
+                    min-width: 0;
+                    position: sticky; /* Make the left column sticky */
+                    top: 20px;        /* Stick to 20px from top of viewport */
+                    height: fit-content; /* Allow it to take only needed height */
+                    max-height: 100vh;   /* Prevent it from being taller than viewport */
+                    overflow-y: auto;    /* Scroll internally if slide content itself is too tall */
+                }
+                
+                .notes {
+                    flex: 1;
+                    padding-left: 30px;
+                    min-width: 0;
+                }
+                
+                /* Mobile Responsiveness: Stack them on small screens */
+                @media (max-width: 768px) {
+                    .page { display: block; }
+                    .slide { 
+                        padding-right: 0; 
+                        border-right: none; 
+                        border-bottom: 1px solid var(--border); 
+                        margin-bottom: 20px; 
+                        padding-bottom: 20px;
+                        position: static; /* Disable sticky on mobile */
+                        max-height: none;
+                    }
+                    .notes { padding-left: 0; }
                 }
             </style>
             <script>
@@ -371,39 +474,31 @@ class App(tk.Tk):
                     b64_data = base64.b64encode(img_f.read()).decode('utf-8')
                     img_src = f"data:{mime_type};base64,{b64_data}"
 
-                # Regex replacement logic
-                # Target: <div class="..." id="text-view-{slide_id}">
-                # We want to insert the Image and Toggle Button BEFORE this div.
-                # And we want to hide this div initially.
+                # Robust replacement logic using string search
+                # 1. Find the exact string for the text div opening tag
+                # We look for the ID pattern to locate it
+                search_pattern = re.compile(rf'(<div[^>]*id="text-view-{re.escape(slide_id)}"[^>]*>)')
+                match = search_pattern.search(content)
                 
-                # 1. Find the text div tag
-                pattern = re.compile(rf'(<div[^>]*id="text-view-{re.escape(slide_id)}"[^>]*>)', re.IGNORECASE)
-                
-                # 2. Construct the content to insert BEFORE the text div
-                # Note: We also inject a script AFTER the text div opens to hide it, 
-                # effectively setting the default state to "Image Visible, Text Hidden".
-                
-                # We use triple quotes to avoid escaping issues.
-                # The resulting HTML should look like: onclick="toggleImageText('01')"
-                insertion = f"""
+                if match:
+                    original_tag = match.group(1) # e.g. <div class="..." id="text-view-01">
+                    
+                    # 2. Construct insertion content
+                    insertion = f"""
                     <div class="slide-controls" style="text-align: right; margin-bottom: 8px;">
                     <button id="btn-toggle-{slide_id}" class="img-text-toggle-btn" onclick="toggleImageText('{slide_id}')">切換為文字 (Show Text)</button>
                     </div>
                     <div id="img-view-{slide_id}" class="slide-img-container" style="display:block; margin-bottom:10px;">
                     <img src="{img_src}">
                     </div>
-                """
-                
-                # The replacement string puts the 'insertion' first, then the original opening tag '\1',
-                # then a script to hide the text div immediately.
-                replacement = (
-                    f"{insertion}"
-                    r"\1" 
-                    f'<script>document.getElementById("text-view-{slide_id}").style.display="none";</script>'
-                )
-                
-                if pattern.search(content):
-                    content = pattern.sub(replacement, content, count=1)
+                    """
+                    
+                    # 3. Create the new block: Insertion + Original Tag + Script to hide text
+                    new_block = f'{insertion}{original_tag}<script>document.getElementById("text-view-{slide_id}").style.display="none";</script>'
+                    
+                    # 4. Replace ONLY the original tag with the new block
+                    # Using string replace ensures we don't duplicate surrounding content
+                    content = content.replace(original_tag, new_block, 1)
                     processed_count += 1
             
             with open(output_path, "w", encoding="utf-8") as f:
