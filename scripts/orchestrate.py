@@ -118,38 +118,77 @@ def run_agent(agent: str, mode: str, vars_map: dict, retries: int = 3, delay: in
     print_error(f"AI failed to generate a response for {mode} after {retries} attempts.", exit_code=1)
     return "" # Return empty string if all retries fail
 
-def parse_ai_json_output(output: str, mode: str) -> dict:
+def parse_ai_json_output(output: str, mode: str) -> dict | None:
     """
     Parses the AI's output, handling raw JSON, JSON in markdown fences,
-    and the gemini tool's wrapper object.
+    and the gemini tool's wrapper object. Returns None on failure.
     """
     try:
-        # First, try to strip markdown fences from the entire output string.
-        match = re.search(r"```(?:json)?\s*({.*?})\s*```", output, re.DOTALL)
-        json_str = match.group(1).strip() if match else output.strip()
+        # Helper to try loading JSON
+        def try_load(text):
+            return json.loads(text)
 
-        # Now, parse the cleaned/original string.
-        data = json.loads(json_str)
+        data = None
+        # 1. Try direct parse
+        try: data = try_load(output); 
+        except: pass
 
-        # If the parsed data has a "response" field and it's a string,
-        # it's likely the gemini tool's wrapper. The actual payload is inside.
-        if "response" in data and isinstance(data["response"], str):
+        if data is None:
+            # 2. Try stripping markdown fences
+            match = re.search(r"```(?:json)?\s*(.*?)```", output, re.DOTALL)
+            if match:
+                try: data = try_load(match.group(1).strip())
+                except: pass
+        
+        if data is None:
+            # 3. Try finding outer braces/brackets
+            output_strip = output.strip()
+            for start_char, end_char in [('{', '}'), ('[', ']')]:
+                start = output_strip.find(start_char)
+                end = output_strip.rfind(end_char)
+                if start != -1 and end != -1 and end > start:
+                    try: 
+                        candidate = output_strip[start:end+1]
+                        data = try_load(candidate)
+                        if data is not None: break
+                    except: pass
+        
+        if data is None:
+            raise ValueError("Could not extract valid JSON from output.")
+
+        # If the parsed data has a "response" field and it's a string... (Gemini wrapper handling)
+        if isinstance(data, dict) and "response" in data and isinstance(data["response"], str):
             nested_str = data["response"]
-            # The nested string could ALSO have markdown fences.
-            nested_match = re.search(r"```(?:json)?\s*({.*?})\s*```", nested_str, re.DOTALL)
-            final_json_str = nested_match.group(1).strip() if nested_match else nested_str.strip()
-            return json.loads(final_json_str)
-        else:
-            # Otherwise, the parsed data is the direct payload.
-            return data
-    except (json.JSONDecodeError, AttributeError) as e:
-        print_error(f"{mode} 階段輸出不是有效的 JSON。收到的內容: {output}\nError: {e}", exit_code=1)
+            # Recursive call to parse the inner string
+            nested_data = parse_ai_json_output(nested_str, f"{mode} (Nested)")
+            return nested_data if nested_data is not None else data 
+        
+        return data
+
+    except Exception as e:
+        # Log error
+        print_error(f"{mode} JSON parse failed. Error: {e}", exit_code=None)
+        
+        # Save debug info
+        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+        debug_dir = OUTPUT_ROOT / "debug"
+        debug_dir.mkdir(parents=True, exist_ok=True)
+        debug_file = debug_dir / f"parse_fail_{mode}_{timestamp}.txt"
+        try:
+            debug_file.write_text(f"ERROR: {e}\n\n--- RAW OUTPUT ---\n{output}", encoding="utf-8")
+            print_info(f"Failed output saved to: {debug_file.relative_to(ROOT)}")
+        except Exception as write_err:
+            print_error(f"Failed to save debug file: {write_err}", exit_code=None)
+            
+        return None
 
 def get_config(args: argparse.Namespace) -> dict:
     cfg = yaml.safe_load(CONFIG_PATH.read_text(encoding="utf-8")) if CONFIG_PATH.exists() else {}
     # Add default version if not in config, useful for metadata
     if 'version' not in cfg:
         cfg['version'] = '1.6.0'
+    if 'plan_max_reworks' not in cfg:
+        cfg['plan_max_reworks'] = 3
     # Add defaults for new SVG settings
     if 'slide_svg_max_reworks' not in cfg:
         cfg['slide_svg_max_reworks'] = 5
@@ -231,6 +270,10 @@ def generate_svgs(cfg: dict, pages: list, output_dir: Path, slides_dir: Path, no
                 validation_vars = {"svg_code": last_slide_svg_attempt}
                 validation_json = run_agent(cfg["agent"], "VALIDATE_SLIDE_SVG", validation_vars, retries=2, model_name=model_name)
                 validation_result = parse_ai_json_output(validation_json, "VALIDATE_SLIDE_SVG")
+                
+                if not validation_result:
+                     print_error(f"Validation JSON parse failed for page {page} on attempt {attempt}.", exit_code=None)
+                     continue
 
                 if validation_result.get("is_valid", False):
                     print_success(f"Perfect Slide SVG validation passed for page {page}.")
@@ -291,6 +334,10 @@ def generate_svgs(cfg: dict, pages: list, output_dir: Path, slides_dir: Path, no
                 validation_vars = {"svg_code": last_conceptual_svg_attempt, "slide_content": slide_content, "memo_content": memo_content}
                 validation_json = run_agent(cfg["agent"], "VALIDATE_CONCEPTUAL_SVG", validation_vars, retries=2, model_name=model_name)
                 validation_result = parse_ai_json_output(validation_json, "VALIDATE_CONCEPTUAL_SVG")
+                
+                if not validation_result:
+                     print_error(f"Validation JSON parse failed for page {page} on attempt {attempt}.", exit_code=None)
+                     continue
 
                 if validation_result.get("is_valid", False):
                     print_success(f"Perfect Conceptual SVG validation passed for page {page}.")
@@ -348,6 +395,7 @@ def main():
     parser.add_argument("--agent", dest="agent", help="AI agent to use (e.g., gemini)")
     parser.add_argument("--gemini-model", dest="gemini_model", help="Specific Gemini model to use (e.g., gemini-pro, gemini-1.5-pro-latest)")
     parser.add_argument("--custom-instruction", dest="custom_instruction", help="User-provided custom instruction for the MEMO agent")
+    parser.add_argument("--plan-reworks", dest="plan_max_reworks", type=int, help="Override plan_max_reworks from config.yaml")
     parser.add_argument("--slide-reworks", dest="slide_max_reworks", type=int, help="Override slide_max_reworks from config.yaml")
     parser.add_argument("--memo-reworks", dest="memo_max_reworks", type=int, help="Override memo_max_reworks from config.yaml")
     parser.add_argument("--slide-svg-reworks", dest="slide_svg_max_reworks", type=int, help="Override slide_svg_max_reworks from config.yaml")
@@ -391,6 +439,7 @@ def main():
             continue
         
         current_analysis_data = parse_ai_json_output(analysis_output, "ANALYZE_SOURCE_DOCUMENT")
+        if not current_analysis_data: continue
         last_analysis_data_attempt = current_analysis_data
 
         print_info("Validating source document analysis...")
@@ -402,7 +451,7 @@ def main():
         
         validation_result = {"is_valid": False, "is_acceptable": False, "feedback": "Validation agent returned no response."}
         if validation_json:
-            validation_result = parse_ai_json_output(validation_json, "VALIDATE_ANALYSIS")
+            validation_result = parse_ai_json_output(validation_json, "VALIDATE_ANALYSIS") or {}
 
         if validation_result.get("is_valid", False):
             print_success("Perfect source document analysis passed. Finishing.")
@@ -473,16 +522,27 @@ def main():
     slides_dir = output_dir / "slides"; notes_dir = output_dir / "notes"; guide_file = output_dir / "guide.html"
     plan_json_path = output_dir / ".plan.json"
 
+    plan = None
+    pages = []
+    MAX_PLAN_REWORKS = cfg.get("plan_max_reworks", 3)
+
     if args.plan_from_slides:
         print_header("Phase 1: AI Planning from Slides File")
         slide_file_path = Path(args.plan_from_slides)
         if not slide_file_path.is_absolute(): slide_file_path = ROOT / slide_file_path
         if not slide_file_path.exists(): print_error(f"簡報檔案不存在: {slide_file_path}")
         slide_content = slide_file_path.read_text(encoding="utf-8")
-        plan = parse_ai_json_output(run_agent(cfg["agent"], "PLAN_FROM_SLIDES", {"slide_file_content": slide_content, "source_file_path": str(source_path)}, model_name=cfg.get("gemini_model")), "PLAN_FROM_SLIDES")
+        
+        for attempt in range(MAX_PLAN_REWORKS):
+            if attempt > 0: print_info(f"Retrying PLAN_FROM_SLIDES... (Attempt {attempt+1}/{MAX_PLAN_REWORKS})")
+            output = run_agent(cfg["agent"], "PLAN_FROM_SLIDES", {"slide_file_content": slide_content, "source_file_path": str(source_path)}, model_name=cfg.get("gemini_model"))
+            plan = parse_ai_json_output(output, "PLAN_FROM_SLIDES")
+            if plan and plan.get("pages"): break
+        
+        if not plan or not plan.get("pages"): print_error("AI 未能從簡報檔案生成任何頁面計畫。", exit_code=1)
+        
         pages = plan.get("pages", [])
         for page_item in pages: page_item["topic"] = sanitize_filename(page_item["topic"])
-        if not pages: print_error("AI 未能從簡報檔案生成任何頁面計畫。")
         print_info(f"AI is planning {len(pages)} slides... Writing to '{slides_dir.name}' folder.")
         slides_dir.mkdir(exist_ok=True)
         for item in pages: 
@@ -491,7 +551,14 @@ def main():
         args.memos_only = True
     else:
         print_header("Phase 1: AI Planning from Source Document")
-        plan = parse_ai_json_output(run_agent(cfg["agent"], "PLAN", {"source_file_path": str(source_path)}, model_name=cfg.get("gemini_model")), "PLAN")
+        for attempt in range(MAX_PLAN_REWORKS):
+            if attempt > 0: print_info(f"Retrying PLAN... (Attempt {attempt+1}/{MAX_PLAN_REWORKS})")
+            output = run_agent(cfg["agent"], "PLAN", {"source_file_path": str(source_path)}, model_name=cfg.get("gemini_model"))
+            plan = parse_ai_json_output(output, "PLAN")
+            if plan and plan.get("pages"): break
+
+        if not plan or not plan.get("pages"): print_error("AI 未能生成任何頁面計畫。", exit_code=1)
+
         pages = plan.get("pages", [])
         for page_item in pages: page_item["topic"] = sanitize_filename(page_item["topic"])
 
@@ -524,6 +591,7 @@ def main():
                     continue
                 
                 deck_data = parse_ai_json_output(deck_output, "DECK")
+                if not deck_data: continue
                 generated_slides = deck_data.get("slides", [])
 
                 if not generated_slides or len(generated_slides) != len(pages):
@@ -538,7 +606,7 @@ def main():
                 
                 validation_result = {"is_valid": False, "is_acceptable": False, "feedback": "Validation agent returned no response."}
                 if validation_json:
-                    validation_result = parse_ai_json_output(validation_json, "VALIDATE_DECK")
+                    validation_result = parse_ai_json_output(validation_json, "VALIDATE_DECK") or {}
 
                 if validation_result.get("is_valid", False):
                     print_success("Perfect slide deck validation passed. Finishing.")
@@ -652,7 +720,7 @@ def main():
                     print_info(f"Validating memo for page {page}...")
                     validation_vars = {"slide_content": slide_content, "memo_content": last_memo_attempt}
                     validation_json = run_agent(cfg["agent"], "VALIDATE_MEMO", validation_vars, retries=2, model_name=cfg.get("gemini_model"))
-                    validation_result = parse_ai_json_output(validation_json, "VALIDATE_MEMO")
+                    validation_result = parse_ai_json_output(validation_json, "VALIDATE_MEMO") or {}
 
                     if validation_result.get("is_valid", False):
                         print_success(f"Validation passed for page {page}. Finishing.")

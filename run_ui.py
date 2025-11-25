@@ -5,11 +5,13 @@ import subprocess
 import threading
 import webbrowser
 import tkinter as tk
-from tkinter import filedialog, scrolledtext, font as tkFont, ttk
+from tkinter import filedialog, scrolledtext, font as tkFont, ttk, messagebox
+import base64
+import mimetypes
 
 import requests
 
-version = "v2.3"
+version = "v2.5"
 
 class App(tk.Tk):
     def __init__(self, available_models):
@@ -18,10 +20,10 @@ class App(tk.Tk):
         self.title(f"PPTPlaner {version}")
         # Set window size and position
         screen_height = self.winfo_screenheight()
-        window_height = int(screen_height * 0.7)
-        if window_height < 620: window_height = 620
-        elif window_height > 850: window_height = 850
-        window_width = 750
+        window_height = int(screen_height * 0.8) # Increased height for the new list view
+        if window_height < 700: window_height = 700
+        elif window_height > 900: window_height = 900
+        window_width = 800 # Increased width
         center_x = int((self.winfo_screenwidth() / 2) - (window_width / 2))
         center_y = int((screen_height / 2) - (window_height / 2))
         self.geometry(f'{window_width}x{window_height}+{center_x}+{center_y}')
@@ -30,10 +32,15 @@ class App(tk.Tk):
         self.available_gemini_models = available_models
         self.source_file_path = tk.StringVar()
         self.slides_file_path = tk.StringVar()
-        self.generate_svg = tk.BooleanVar(value=False) # Add this line
+        self.generate_svg = tk.BooleanVar(value=False)
         self.quota_event = threading.Event()
-        self.quota_event.set() # Initially, no quota error, so allow to proceed
-        self.current_gemini_model = None # Stores the currently selected Gemini model. None means default.
+        self.quota_event.set()
+        self.current_gemini_model = None
+        
+        # Variables for Image Embedding Mode
+        self.guide_html_path = tk.StringVar()
+        self.slide_image_map = {} # Dictionary to store slide_id -> image_path
+        self.slide_rows_frame = None # Frame inside canvas
 
         # --- Layout Structure ---
         footer_frame = tk.Frame(self, bg="#e0e0e0")
@@ -61,6 +68,7 @@ class App(tk.Tk):
         tk.Label(mode_selection_frame, text="選擇操作模式:").pack(side="left", padx=(0, 10))
         tk.Radiobutton(mode_selection_frame, text="全新生成", variable=self.mode_selection, value="new_generation", command=self.toggle_mode_inputs).pack(side="left", padx=5)
         tk.Radiobutton(mode_selection_frame, text="接續生成 SVG", variable=self.mode_selection, value="resume", command=self.toggle_mode_inputs).pack(side="left", padx=5)
+        tk.Radiobutton(mode_selection_frame, text="製作圖文簡報 (HTML)", variable=self.mode_selection, value="embed_images", command=self.toggle_mode_inputs).pack(side="left", padx=5)
 
         # --- Resume Specific Inputs ---
         self.resume_output_dir_frame = tk.Frame(main_frame) 
@@ -69,13 +77,49 @@ class App(tk.Tk):
         tk.Entry(self.resume_output_dir_frame, textvariable=self.resume_output_dir_path, width=80).grid(row=1, column=0, padx=(0, 5), columnspan=2, sticky="ew")
         tk.Button(self.resume_output_dir_frame, text="瀏覽...", command=self.browse_resume_output_dir).grid(row=1, column=2)
         
-        # Add model selection for resume mode
         tk.Label(self.resume_output_dir_frame, text="選擇 Gemini 模型:").grid(row=2, column=0, columnspan=3, sticky="w", pady=(10,2))
         self.resume_gemini_model_var = tk.StringVar(value=self.available_gemini_models[0] if self.available_gemini_models else "")
         self.resume_model_combobox = ttk.Combobox(self.resume_output_dir_frame, textvariable=self.resume_gemini_model_var, values=self.available_gemini_models, state="readonly", width=30)
         self.resume_model_combobox.grid(row=3, column=0, columnspan=2, sticky="w", pady=2)
-
         self.resume_output_dir_frame.grid_columnconfigure(0, weight=1)
+
+        # --- Embed Images Specific Inputs ---
+        self.embed_images_frame = tk.Frame(main_frame)
+        
+        # Top section: File selection
+        ei_top_frame = tk.Frame(self.embed_images_frame)
+        ei_top_frame.pack(fill="x", pady=5)
+        tk.Label(ei_top_frame, text="選擇原始 guide.html:").grid(row=0, column=0, sticky="w")
+        tk.Entry(ei_top_frame, textvariable=self.guide_html_path, width=70).grid(row=0, column=1, padx=5, sticky="ew")
+        tk.Button(ei_top_frame, text="瀏覽...", command=self.browse_guide_html).grid(row=0, column=2, padx=2)
+        tk.Button(ei_top_frame, text="讀取並列出頁面", command=self.load_slides_from_html, bg="#d0f0c0").grid(row=0, column=3, padx=10)
+        ei_top_frame.grid_columnconfigure(1, weight=1)
+
+        # Middle section: Scrollable list of slides
+        self.slide_list_container = tk.Frame(self.embed_images_frame, bd=2, relief="groove")
+        self.slide_list_container.pack(fill="both", expand=True, pady=10)
+        
+        # Canvas for scrolling
+        self.slide_canvas = tk.Canvas(self.slide_list_container)
+        self.scrollbar = ttk.Scrollbar(self.slide_list_container, orient="vertical", command=self.slide_canvas.yview)
+        self.scrollable_frame = tk.Frame(self.slide_canvas)
+
+        self.scrollable_frame.bind(
+            "<Configure>",
+            lambda e: self.slide_canvas.configure(scrollregion=self.slide_canvas.bbox("all"))
+        )
+        self.slide_canvas.create_window((0, 0), window=self.scrollable_frame, anchor="nw")
+        self.slide_canvas.configure(yscrollcommand=self.scrollbar.set)
+        
+        self.slide_canvas.pack(side="left", fill="both", expand=True)
+        self.scrollbar.pack(side="right", fill="y")
+
+        # Bottom section: Generate Button
+        ei_bottom_frame = tk.Frame(self.embed_images_frame)
+        ei_bottom_frame.pack(fill="x", pady=10)
+        tk.Label(ei_bottom_frame, text="注意: 生成後檔案將存為 slide.html，預設位於同一目錄下。").pack(side="left", padx=5)
+        tk.Button(ei_bottom_frame, text="生成圖文切換簡報 (slide.html)", command=self.generate_image_slide_html, font=("Arial", 11, "bold"), bg="#c0d8f0").pack(side="right", padx=10)
+
 
         # --- New Generation Controls ---
         self.new_generation_controls_frame = tk.Frame(main_frame)
@@ -101,10 +145,17 @@ class App(tk.Tk):
         rework_frame = tk.Frame(self.new_generation_controls_frame)
         rework_frame.grid(row=7, column=0, columnspan=3, sticky="w", pady=5)
         tk.Label(rework_frame, text="最大修正次數 (0-10):").pack(side="left", padx=(0, 10))
+        
+        tk.Label(rework_frame, text="規劃:").pack(side="left", padx=(0, 5))
+        self.plan_reworks_spinbox = tk.Spinbox(rework_frame, from_=0, to=10, width=5, justify="center")
+        self.plan_reworks_spinbox.pack(side="left", padx=(0, 15))
+        self.plan_reworks_spinbox.delete(0, "end"); self.plan_reworks_spinbox.insert(0, "3")
+
         tk.Label(rework_frame, text="簡報:").pack(side="left", padx=(0, 5))
         self.slide_reworks_spinbox = tk.Spinbox(rework_frame, from_=0, to=10, width=5, justify="center")
         self.slide_reworks_spinbox.pack(side="left", padx=(0, 15))
         self.slide_reworks_spinbox.delete(0, "end"); self.slide_reworks_spinbox.insert(0, "5")
+        
         tk.Label(rework_frame, text="備忘稿:").pack(side="left", padx=(0, 5))
         self.memo_reworks_spinbox = tk.Spinbox(rework_frame, from_=0, to=10, width=5, justify="center")
         self.memo_reworks_spinbox.pack(side="left")
@@ -118,7 +169,7 @@ class App(tk.Tk):
 
         self.new_generation_controls_frame.grid_columnconfigure(0, weight=1)
 
-        # Common elements packing will be handled by toggle_mode_inputs to ensure correct order
+        # Common elements
         self.run_button = tk.Button(main_frame, text="開始生成", command=self.run_orchestration, font=("Arial", 12, "bold"), bg="#c0d8f0")
         self.progress_label = tk.Label(main_frame, text="執行進度:")
         self.console = scrolledtext.ScrolledText(main_frame, wrap=tk.WORD, state="disabled", bg="#f5f5f5")
@@ -130,35 +181,25 @@ class App(tk.Tk):
     def open_link(self, url): webbrowser.open_new_tab(url)
     def browse_source_file(self): 
         filepath = filedialog.askopenfilename(title="選擇原文書檔案", filetypes=(("Markdown & Text", "*.md *.txt"), ("All files", "*.*")))
-        if filepath:
-            try:
-                # Try to make it a relative path
-                display_path = os.path.relpath(filepath)
-            except ValueError:
-                # If it fails (e.g., different drives), use the absolute path
-                display_path = os.path.abspath(filepath)
-            self.source_file_path.set(display_path)
+        if filepath: self.source_file_path.set(os.path.abspath(filepath))
 
     def browse_slides_file(self): 
         filepath = filedialog.askopenfilename(title="選擇簡報檔案", filetypes=(("Markdown & Text", "*.md *.txt"), ("All files", "*.*")))
-        if filepath:
-            try:
-                display_path = os.path.relpath(filepath)
-            except ValueError:
-                display_path = os.path.abspath(filepath)
-            self.slides_file_path.set(display_path)
+        if filepath: self.slides_file_path.set(os.path.abspath(filepath))
 
     def browse_resume_output_dir(self):
         dirpath = filedialog.askdirectory(title="選擇現有輸出資料夾")
-        if dirpath:
-            try:
-                display_path = os.path.relpath(dirpath)
-            except ValueError:
-                display_path = os.path.abspath(dirpath)
-            self.resume_output_dir_path.set(display_path)
+        if dirpath: self.resume_output_dir_path.set(os.path.abspath(dirpath))
+
+    def browse_guide_html(self):
+        filepath = filedialog.askopenfilename(title="選擇 guide.html", filetypes=(("HTML files", "*.html"), ("All files", "*.*")))
+        if filepath: self.guide_html_path.set(os.path.abspath(filepath))
 
     def toggle_mode_inputs(self):
-        # Forget common elements to ensure correct packing order later
+        # Forget everything first
+        self.new_generation_controls_frame.pack_forget()
+        self.resume_output_dir_frame.pack_forget()
+        self.embed_images_frame.pack_forget()
         self.run_button.pack_forget()
         self.progress_label.pack_forget()
         self.console.pack_forget()
@@ -166,15 +207,213 @@ class App(tk.Tk):
         selected_mode = self.mode_selection.get()
         if selected_mode == "new_generation":
             self.new_generation_controls_frame.pack(fill="x")
-            self.resume_output_dir_frame.pack_forget()
-        else: # selected_mode == "resume"
-            self.new_generation_controls_frame.pack_forget()
+            self.run_button.pack(pady=15, fill="x", ipady=5)
+            self.progress_label.pack(fill="x", anchor="w")
+            self.console.pack(pady=5, fill="both", expand=True)
+        elif selected_mode == "resume":
             self.resume_output_dir_frame.pack(fill="x")
+            self.run_button.pack(pady=15, fill="x", ipady=5)
+            self.progress_label.pack(fill="x", anchor="w")
+            self.console.pack(pady=5, fill="both", expand=True)
+        elif selected_mode == "embed_images":
+            self.embed_images_frame.pack(fill="both", expand=True)
+            # Note: "run_button" and "console" are NOT used in this mode, 
+            # as it has its own "Generate" button and logic.
 
-        # Pack common elements after the mode-specific frame
-        self.run_button.pack(pady=15, fill="x", ipady=5)
-        self.progress_label.pack(fill="x", anchor="w")
-        self.console.pack(pady=5, fill="both", expand=True)
+    def load_slides_from_html(self):
+        html_path = self.guide_html_path.get()
+        if not html_path or not os.path.exists(html_path):
+            messagebox.showerror("錯誤", "請選擇有效的 guide.html 檔案。")
+            return
+
+        # Clear existing list
+        for widget in self.scrollable_frame.winfo_children():
+            widget.destroy()
+        self.slide_image_map = {}
+
+        try:
+            with open(html_path, "r", encoding="utf-8") as f:
+                content = f.read()
+            
+            # Updated regex to find slides with either <h1> or <h2>. 
+            # Matches <h1>Slide X</h1> or <h2>Slide X</h2>
+            matches = re.findall(r'<h[12]>Slide\s+(.*?)</h[12]>', content)
+            
+            if not matches:
+                messagebox.showinfo("提示", "在檔案中找不到 '<h1>Slide X</h1>' 或 '<h2>Slide X</h2>' 格式的標題。")
+                return
+
+            tk.Label(self.scrollable_frame, text=f"找到 {len(matches)} 頁投影片", font=("Arial", 10, "bold")).pack(pady=5, anchor="w")
+
+            for slide_id in matches:
+                row_frame = tk.Frame(self.scrollable_frame, pady=2)
+                row_frame.pack(fill="x", expand=True)
+                
+                tk.Label(row_frame, text=f"Slide {slide_id}:", width=10, anchor="w").pack(side="left")
+                
+                path_var = tk.StringVar()
+                self.slide_image_map[slide_id] = path_var
+                
+                entry = tk.Entry(row_frame, textvariable=path_var)
+                entry.pack(side="left", fill="x", expand=True, padx=5)
+                
+                btn = tk.Button(row_frame, text="選擇圖片", command=lambda sv=path_var: self.browse_image_for_slide(sv))
+                btn.pack(side="left")
+
+            # Attempt to auto-match images in the same folder
+            self.auto_match_images(html_path, matches)
+
+        except Exception as e:
+            messagebox.showerror("錯誤", f"讀取 HTML 時發生錯誤: {e}")
+
+    def browse_image_for_slide(self, string_var):
+        f = filedialog.askopenfilename(filetypes=(("Images", "*.png *.jpg *.jpeg *.webp"), ("All files", "*.*")))
+        if f: string_var.set(f)
+
+    def auto_match_images(self, html_path, slide_ids):
+        """Attempts to find images like 'Slide 1.png' or '1.png' in the same folder."""
+        folder = os.path.dirname(html_path)
+        count = 0
+        for sid in slide_ids:
+            # Try various naming conventions
+            candidates = [
+                f"{sid}.png", f"{sid}.jpg", 
+                f"Slide {sid}.png", f"Slide {sid}.jpg",
+                f"slide_{sid}.png", f"slide_{sid}.jpg" # standard export format often used
+            ]
+            for cand in candidates:
+                full_path = os.path.join(folder, cand)
+                if os.path.exists(full_path):
+                    self.slide_image_map[sid].set(full_path)
+                    count += 1
+                    break
+        if count > 0:
+             tk.Label(self.scrollable_frame, text=f"已自動匹配 {count} 張圖片", fg="green").pack(anchor="w")
+
+    def generate_image_slide_html(self):
+        html_path = self.guide_html_path.get()
+        if not html_path or not os.path.exists(html_path):
+            messagebox.showerror("錯誤", "原始 guide.html 路徑無效。")
+            return
+
+        # Determine output path (default to slide.html in same dir)
+        output_dir = os.path.dirname(html_path)
+        output_path = filedialog.asksaveasfilename(
+            initialdir=output_dir, initialfile="slide.html",
+            defaultextension=".html", filetypes=(("HTML files", "*.html"),)
+        )
+        if not output_path: return
+
+        try:
+            with open(html_path, "r", encoding="utf-8") as f:
+                content = f.read()
+
+            # Inject CSS and JS
+            # We define styles for the toggle button and the image container.
+            style_script = """
+            <style>
+                .img-text-toggle-btn {
+                    padding: 6px 12px;
+                    cursor: pointer;
+                    background: #4f46e5; /* Indigo-600 */
+                    color: white;
+                    border: none;
+                    border-radius: 6px;
+                    font-size: 14px;
+                    transition: background 0.2s;
+                }
+                .img-text-toggle-btn:hover { background: #4338ca; }
+                .slide-img-container img {
+                    max-width: 100%;
+                    height: auto;
+                    border: 1px solid #e5e7eb;
+                    border-radius: 8px;
+                    box-shadow: 0 2px 4px rgba(0,0,0,0.05);
+                }
+            </style>
+            <script>
+                function toggleImageText(id) {
+                    var imgDiv = document.getElementById('img-view-' + id);
+                    var textDiv = document.getElementById('text-view-' + id);
+                    var btn = document.getElementById('btn-toggle-' + id);
+                    
+                    if (imgDiv.style.display !== 'none') {
+                        // Currently showing image, switch to text
+                        imgDiv.style.display = 'none';
+                        textDiv.style.display = 'block';
+                        btn.innerText = '切換為圖片 (Show Image)';
+                    } else {
+                        // Currently showing text, switch to image
+                        imgDiv.style.display = 'block';
+                        textDiv.style.display = 'none';
+                        btn.innerText = '切換為文字 (Show Text)';
+                    }
+                }
+            </script>
+            """
+            if "</head>" in content:
+                content = content.replace("</head>", f"{style_script}</head>")
+            else:
+                content = style_script + content
+
+            processed_count = 0
+            
+            # Iterate through map and replace
+            for slide_id, path_var in self.slide_image_map.items():
+                img_path = path_var.get()
+                if not img_path or not os.path.exists(img_path):
+                    continue # Skip if no image selected
+
+                # Encode image
+                mime_type, _ = mimetypes.guess_type(img_path)
+                if not mime_type: mime_type = "image/png"
+                with open(img_path, "rb") as img_f:
+                    b64_data = base64.b64encode(img_f.read()).decode('utf-8')
+                    img_src = f"data:{mime_type};base64,{b64_data}"
+
+                # Regex replacement logic
+                # Target: <div class="..." id="text-view-{slide_id}">
+                # We want to insert the Image and Toggle Button BEFORE this div.
+                # And we want to hide this div initially.
+                
+                # 1. Find the text div tag
+                pattern = re.compile(rf'(<div[^>]*id="text-view-{re.escape(slide_id)}"[^>]*>)', re.IGNORECASE)
+                
+                # 2. Construct the content to insert BEFORE the text div
+                # Note: We also inject a script AFTER the text div opens to hide it, 
+                # effectively setting the default state to "Image Visible, Text Hidden".
+                
+                # We use triple quotes to avoid escaping issues.
+                # The resulting HTML should look like: onclick="toggleImageText('01')"
+                insertion = f"""
+                    <div class="slide-controls" style="text-align: right; margin-bottom: 8px;">
+                    <button id="btn-toggle-{slide_id}" class="img-text-toggle-btn" onclick="toggleImageText('{slide_id}')">切換為文字 (Show Text)</button>
+                    </div>
+                    <div id="img-view-{slide_id}" class="slide-img-container" style="display:block; margin-bottom:10px;">
+                    <img src="{img_src}">
+                    </div>
+                """
+                
+                # The replacement string puts the 'insertion' first, then the original opening tag '\1',
+                # then a script to hide the text div immediately.
+                replacement = (
+                    f"{insertion}"
+                    r"\1" 
+                    f'<script>document.getElementById("text-view-{slide_id}").style.display="none";</script>'
+                )
+                
+                if pattern.search(content):
+                    content = pattern.sub(replacement, content, count=1)
+                    processed_count += 1
+            
+            with open(output_path, "w", encoding="utf-8") as f:
+                f.write(content)
+            
+            messagebox.showinfo("成功", f"已生成 {output_path}\n共處理 {processed_count} 頁投影片。")
+            webbrowser.open(output_path)
+
+        except Exception as e:
+            messagebox.showerror("錯誤", f"生成過程發生錯誤: {e}")
 
     def log_message(self, message): self.console.config(state="normal"); self.console.insert(tk.END, message); self.console.see(tk.END); self.console.config(state="disabled"); self.update_idletasks()
     def _show_quota_dialog(self, quota_reset_time: str | None = None): # Add parameter
@@ -286,6 +525,7 @@ class App(tk.Tk):
             source_file = self.source_file_path.get()
             slides_file = self.slides_file_path.get()
             custom_instruction = self.custom_instruction_text.get("1.0", tk.END).strip()
+            plan_reworks = self.plan_reworks_spinbox.get()
             slide_reworks = self.slide_reworks_spinbox.get()
             memo_reworks = self.memo_reworks_spinbox.get()
 
@@ -307,6 +547,11 @@ class App(tk.Tk):
 
             
             # Add rework counts if they are valid integers
+            try:
+                if int(plan_reworks) >= 0: command.extend(["--plan-reworks", plan_reworks])
+            except ValueError:
+                self.log_message("警告：規劃修正次數不是有效的數字，將使用預設值。\n")
+
             try:
                 if int(slide_reworks) >= 0: command.extend(["--slide-reworks", slide_reworks])
             except ValueError:

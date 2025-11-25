@@ -58,3 +58,4 @@ tone: "academic-friendly"          # academic / formal / narrative / teaching
 
 slide_max_reworks: 5  # 整份簡報的修正次數
 memo_max_reworks: 5   # 每頁備忘稿的修正次數
+plan_max_reworks: 3   # 規劃階段的修正次數
