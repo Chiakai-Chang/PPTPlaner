@@ -11,7 +11,7 @@ import mimetypes
 
 import requests
 
-version = "v2.6"
+version = "v2.7"
 
 class App(tk.Tk):
     def __init__(self, available_models):
@@ -101,7 +101,14 @@ class App(tk.Tk):
         tk.Label(yt_frame, text="YouTube 影片 ID (選填):").pack(side="left")
         self.youtube_id_var = tk.StringVar()
         tk.Entry(yt_frame, textvariable=self.youtube_id_var, width=25).pack(side="left", padx=5)
-        tk.Label(yt_frame, text="(例如: dQw4w9WgXcQ，支援自動貼上網址)", fg="gray", font=("Arial", 9)).pack(side="left")
+        tk.Label(yt_frame, text="(例如: dQw4w9WgXcQ)", fg="gray", font=("Arial", 9)).pack(side="left")
+        
+        # Source URL Input Section
+        url_frame = tk.Frame(self.embed_images_frame)
+        url_frame.pack(fill="x", padx=5, pady=(0, 5))
+        tk.Label(url_frame, text="原文連結 URL (選填):   ").pack(side="left")
+        self.source_url_var = tk.StringVar()
+        tk.Entry(url_frame, textvariable=self.source_url_var, width=50).pack(side="left", padx=5)
 
         # Middle section: Scrollable list of slides
         self.slide_list_container = tk.Frame(self.embed_images_frame, bd=2, relief="groove")
@@ -316,6 +323,26 @@ class App(tk.Tk):
             with open(html_path, "r", encoding="utf-8") as f:
                 content = f.read()
 
+            # --- Source URL Injection ---
+            source_url = self.source_url_var.get().strip()
+            if source_url:
+                # Styled button HTML - Compact version
+                # Uses a smaller pill design, inline-flex to sit nicely with other elements
+                url_btn_html = f"""
+                <a href="{source_url}" target="_blank" style="display: inline-flex; align-items: center; gap: 4px; padding: 4px 10px; margin-top: 8px; background-color: var(--pill); color: var(--accent); text-decoration: none; border-radius: 12px; font-size: 12px; font-weight: 500; border: 1px solid var(--border); transition: all 0.2s;">
+                    <span style="font-size: 14px;">🔗</span> 原文連結
+                </a>
+                """
+                # Inject it right after the </em> tag (Author info) to keep it compact
+                # If </em> exists, append it there. Otherwise fall back to previous method.
+                if '</em>' in content:
+                    content = content.replace('</em>', f'</em><br>{url_btn_html}', 1)
+                elif '</header>' in content:
+                    header_end_idx = content.find('</header>')
+                    container_end_idx = content.rfind('</div>', 0, header_end_idx)
+                    if container_end_idx != -1:
+                        content = content[:container_end_idx] + url_btn_html + content[container_end_idx:]
+            
             # --- YouTube Injection ---
             yt_id = self.youtube_id_var.get().strip()
             if yt_id:
@@ -372,6 +399,10 @@ class App(tk.Tk):
             # while scrolling through long notes in the right column (.notes).
             style_script = """
             <style>
+                :root {
+                    --header-height: 80px; /* Fallback initial value */
+                }
+
                 .img-text-toggle-btn {
                     padding: 6px 12px;
                     cursor: pointer;
@@ -407,10 +438,12 @@ class App(tk.Tk):
                     border-right: 1px solid var(--border);
                     min-width: 0;
                     position: sticky; /* Make the left column sticky */
-                    top: 20px;        /* Stick to 20px from top of viewport */
-                    height: fit-content; /* Allow it to take only needed height */
-                    max-height: 100vh;   /* Prevent it from being taller than viewport */
-                    overflow-y: auto;    /* Scroll internally if slide content itself is too tall */
+                    /* Dynamic top position: Header height + 20px buffer */
+                    top: calc(var(--header-height) + 20px);
+                    height: fit-content; 
+                    /* Dynamic max-height to fit in viewport */
+                    max-height: calc(100vh - var(--header-height) - 40px);
+                    overflow-y: auto;
                 }
                 
                 .notes {
@@ -452,6 +485,18 @@ class App(tk.Tk):
                         btn.innerText = '切換為文字 (Show Text)';
                     }
                 }
+
+                // Dynamic Header Height Calculation
+                function updateHeaderHeight() {
+                    const header = document.querySelector('header');
+                    if (header) {
+                        const height = header.offsetHeight;
+                        document.documentElement.style.setProperty('--header-height', height + 'px');
+                    }
+                }
+                // Update on load and resize
+                window.addEventListener('load', updateHeaderHeight);
+                window.addEventListener('resize', updateHeaderHeight);
             </script>
             """
             if "</head>" in content:
