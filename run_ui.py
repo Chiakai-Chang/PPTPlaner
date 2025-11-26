@@ -11,7 +11,7 @@ import mimetypes
 
 import requests
 
-version = "v2.7"
+version = "v2.7.1"
 
 class App(tk.Tk):
     def __init__(self, available_models):
@@ -609,6 +609,53 @@ class App(tk.Tk):
 
         self.wait_window(dialog) # Wait until the dialog is closed
 
+    def _show_generic_api_error_dialog(self, error_type: str, message: str):
+        # Log to console as well
+        self.log_message(f"\\n====================\\n")
+        self.log_message(f"API錯誤 ({error_type})！\\n")
+        self.log_message(f"{message}\\n")
+        self.log_message(f"點擊 '繼續' 或 '切換模型並繼續' 後程序將嘗試繼續運行。\\n")
+        self.log_message(f"====================\\n")
+
+        # Create a Toplevel window for the dialog
+        dialog = tk.Toplevel(self)
+        dialog.title(f"API 錯誤: {error_type}")
+        dialog.transient(self) # Make dialog transient to its parent
+        dialog.grab_set() # Make dialog modal
+
+        full_message = (
+            f"Gemini API 遇到問題: {error_type}\\n{message}\\n\\n"
+            "您可以選擇重新嘗試，或嘗試切換到不同的 Gemini 模型。\\n"
+            "點擊 '繼續' 將使用當前模型重試；\\n"
+            "選擇一個模型並點擊 '切換模型並繼續' 將嘗試使用新模型。"
+        )
+        tk.Label(dialog, text=full_message, padx=20, pady=10, justify=tk.LEFT).pack()
+
+        # Model selection dropdown
+        model_frame = tk.Frame(dialog)
+        model_frame.pack(pady=5)
+        tk.Label(model_frame, text="選擇 Gemini 模型:").pack(side=tk.LEFT, padx=5)
+        
+        self.selected_gemini_model_var = tk.StringVar(value=self.current_gemini_model if self.current_gemini_model else self.available_gemini_models[0])
+        self.model_combobox = ttk.Combobox(model_frame, textvariable=self.selected_gemini_model_var, values=self.available_gemini_models, state="readonly")
+        self.model_combobox.pack(side=tk.LEFT, padx=5)
+
+        # Continue button (for current model)
+        continue_button = tk.Button(dialog, text="繼續 (使用當前模型)", command=lambda: self._on_continue_from_quota(dialog, use_selected_model=False))
+        continue_button.pack(pady=(10, 5))
+
+        # Switch Model and Continue button
+        switch_model_button = tk.Button(dialog, text="切換模型並繼續", command=lambda: self._on_continue_from_quota(dialog, use_selected_model=True))
+        switch_model_button.pack(pady=(0, 10))
+
+        # Center the dialog
+        self.update_idletasks()
+        x = self.winfo_x() + (self.winfo_width() // 2) - (dialog.winfo_width() // 2)
+        y = self.winfo_y() + (self.winfo_height() // 2) - (dialog.winfo_height() // 2)
+        dialog.geometry(f"+{x}+{y}")
+
+        self.wait_window(dialog) # Wait until the dialog is closed
+
     def _on_continue_from_quota(self, dialog, use_selected_model: bool):
         if use_selected_model:
             selected_model = self.selected_gemini_model_var.get()
@@ -635,11 +682,26 @@ class App(tk.Tk):
                 if quota_match:
                     quota_reset_time_str = quota_match.group(1)
 
-                if "Error when talking to Gemini API" in line and "You have exhausted your capacity on this model" in line:
+                # Enhanced Error Detection
+                is_quota = (
+                    ("Error when talking to Gemini API" in line and "You have exhausted your capacity" in line) or
+                    ("API Error" in line and "429" in line)
+                )
+                
+                if is_quota:
                     self.quota_event.clear() # Block the thread
-                    # Call the dialog in the main thread using after to avoid blocking the GUI
                     self.after(0, lambda: self._show_quota_dialog(quota_reset_time_str))
                     self.quota_event.wait() # Wait for the user to click 'Continue' in the dialog
+                
+                elif "ECONNRESET" in line or "connection reset" in line:
+                    self.quota_event.clear()
+                    self.after(0, lambda: self._show_generic_api_error_dialog("網路連線錯誤", "連線被重置 (ECONNRESET)。請檢查網路或稍後重試。"))
+                    self.quota_event.wait()
+                
+                elif "[API Error:" in line:
+                    self.quota_event.clear()
+                    self.after(0, lambda: self._show_generic_api_error_dialog("API 錯誤", f"發生未預期的 API 錯誤: {line.strip()}"))
+                    self.quota_event.wait()
         
         # Explicitly wait for the process to terminate and get the return code
         return_code = process.wait()
