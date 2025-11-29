@@ -11,7 +11,7 @@ import mimetypes
 
 import requests
 
-version = "v2.8"
+version = "v2.9"
 
 class App(tk.Tk):
     def __init__(self, available_models):
@@ -133,7 +133,8 @@ class App(tk.Tk):
         ei_bottom_frame = tk.Frame(self.embed_images_frame)
         ei_bottom_frame.pack(fill="x", pady=10)
         tk.Label(ei_bottom_frame, text="注意: 生成後檔案將存為 slide.html，預設位於同一目錄下。").pack(side="left", padx=5)
-        tk.Button(ei_bottom_frame, text="生成圖文切換簡報 (slide.html)", command=self.generate_image_slide_html, font=("Arial", 11, "bold"), bg="#c0d8f0").pack(side="right", padx=10)
+        tk.Button(ei_bottom_frame, text="生成圖文切換簡報 (slide.html)", command=self.generate_image_slide_html, font=("Arial", 11, "bold"), bg="#c0d8f0").pack(side="right", padx=5)
+        tk.Button(ei_bottom_frame, text="升級舊版 HTML", command=self.update_legacy_html, font=("Arial", 10), bg="#e0f0e0").pack(side="right", padx=5)
 
 
         # --- New Generation Controls ---
@@ -305,6 +306,350 @@ class App(tk.Tk):
         if count > 0:
              tk.Label(self.scrollable_frame, text=f"已自動匹配 {count} 張圖片", fg="green").pack(anchor="w")
 
+    def get_html_style_script(self):
+        return """
+            <style>
+                :root {
+                    --header-height: 100px; /* Initial large height */
+                    --tab-height: 50px;
+                    --bg:#ffffff; --fg:#0f172a; --muted:#64748b; --card:#f8fafc; --accent:#2563eb;
+                    --border:#e2e8f0;
+                }
+
+                /* Transitions */
+                header, header h1, header .container {
+                    transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+                }
+
+                .img-text-toggle-btn {
+                    padding: 6px 12px;
+                    cursor: pointer;
+                    background: #4f46e5;
+                    color: white;
+                    border: none;
+                    border-radius: 6px;
+                    font-size: 14px;
+                    transition: background 0.2s;
+                }
+                .img-text-toggle-btn:hover { background: #4338ca; }
+                
+                .slide-img-container img {
+                    max-width: 100%;
+                    height: auto;
+                    border: 1px solid #e5e7eb;
+                    border-radius: 8px;
+                    box-shadow: 0 2px 4px rgba(0,0,0,0.05);
+                }
+
+                /* --- Header Styling (Dynamic) --- */
+                header {
+                    position: sticky; 
+                    top: 0; 
+                    z-index: 1000; 
+                    background: var(--bg);
+                    border-bottom: 1px solid var(--border);
+                    padding: 20px 0; /* Initial comfortable padding */
+                    width: 100%;
+                }
+                
+                header .container {
+                    display: flex;
+                    align-items: center;
+                    justify-content: space-between;
+                    max-width: 1100px;
+                    margin: 0 auto;
+                    padding: 0 16px;
+                }
+
+                header h1 {
+                    margin: 0; 
+                    font-size: 22px; /* Initial Title Size */
+                    line-height: 1.3;
+                    color: var(--fg);
+                    font-weight: 700;
+                }
+
+                /* Scrolled State (Compact) */
+                body.scrolled-mode header {
+                    padding: 8px 0;
+                    background: rgba(255, 255, 255, 0.95);
+                    backdrop-filter: blur(10px);
+                    box-shadow: 0 4px 20px -5px rgba(0,0,0,0.1);
+                }
+                
+                body.scrolled-mode header h1 {
+                    font-size: 15px; /* Tiny Title */
+                    color: var(--muted);
+                    font-weight: 600;
+                }
+
+                /* Hide subtitle in header (moved to body) */
+                header .subtitle { display: none !important; }
+
+
+                /* --- Desktop Layout --- */
+                .page {
+                    display: flex;
+                    border-bottom: 1px solid var(--border);
+                    padding: 40px 0;
+                    margin-bottom: 0;
+                    align-items: flex-start;
+                }
+                
+                .slide {
+                    flex: 1;
+                    padding-right: 30px;
+                    border-right: 1px solid var(--border);
+                    min-width: 0;
+                    position: sticky;
+                    /* Stick below the header */
+                    top: calc(var(--header-height) + 20px);
+                    height: fit-content; 
+                    max-height: calc(100vh - var(--header-height) - 40px);
+                    overflow-y: auto;
+                }
+                
+                .notes {
+                    flex: 1;
+                    padding-left: 30px;
+                    min-width: 0;
+                }
+                
+                /* --- Mobile Layout --- */
+                @media (max-width: 768px) {
+                    :root {
+                        --header-height: 60px; /* Reset for mobile calc */
+                    }
+
+                    .page { 
+                        display: block !important; 
+                        padding-top: 0 !important; 
+                        border-bottom: 8px solid #f1f5f9 !important; 
+                        padding-bottom: 30px;
+                    }
+                    .slide { 
+                        padding-right: 0 !important; 
+                        border-right: none !important; 
+                        border-bottom: none !important;
+                        margin-bottom: 0 !important; 
+                        position: static !important; 
+                        max-height: none !important;
+                    }
+                    .notes { 
+                        padding-left: 0 !important; 
+                        margin-top: 10px;
+                    }
+                    .slide-controls { display: none !important; }
+                    
+                    /* Mobile Sticky Tab Bar - Improved */
+                    .mobile-tab-bar { 
+                        display: flex !important; 
+                        position: sticky;
+                        top: var(--header-height); /* Stick exactly under header */
+                        z-index: 900;
+                        background: rgba(255, 255, 255, 0.98);
+                        backdrop-filter: blur(8px);
+                        padding: 10px 16px;
+                        border-bottom: 1px solid var(--border);
+                        margin: 0 -16px 20px -16px; /* Full width bleed */
+                        box-shadow: 0 4px 6px -4px rgba(0,0,0,0.05);
+                        transition: top 0.3s;
+                    }
+
+                    /* Ensure content doesn't get hidden under tabs when jumping */
+                    .slide-content-wrapper {
+                        scroll-margin-top: 160px;
+                    }
+                }
+                
+                .mobile-tab-bar { display: none; }
+            </style>
+            <script>
+                function toggleImageText(id) {
+                    var imgDiv = document.getElementById('img-view-' + id);
+                    var textDiv = document.getElementById('text-view-' + id);
+                    var btn = document.getElementById('btn-toggle-' + id);
+                    
+                    if (imgDiv.style.display !== 'none') {
+                        imgDiv.style.display = 'none';
+                        textDiv.style.display = 'block';
+                        btn.innerText = '切換為圖片 (Show Image)';
+                    } else {
+                        imgDiv.style.display = 'block';
+                        textDiv.style.display = 'none';
+                        btn.innerText = '切換為文字 (Show Text)';
+                    }
+                }
+
+                // Scroll Handler for Header Shrinking
+                function handleScroll() {
+                    const scrollY = window.scrollY;
+                    const body = document.body;
+                    const header = document.querySelector('header');
+                    
+                    if (scrollY > 50) {
+                        if (!body.classList.contains('scrolled-mode')) {
+                            body.classList.add('scrolled-mode');
+                            // Update variable for sticky calculations
+                            document.documentElement.style.setProperty('--header-height', header.offsetHeight + 'px');
+                        }
+                    } else {
+                        if (body.classList.contains('scrolled-mode')) {
+                            body.classList.remove('scrolled-mode');
+                            // Reset variable
+                            document.documentElement.style.setProperty('--header-height', header.offsetHeight + 'px');
+                        }
+                    }
+                }
+
+                // Init header height
+                function initHeader() {
+                    const header = document.querySelector('header');
+                    if(header) {
+                        document.documentElement.style.setProperty('--header-height', header.offsetHeight + 'px');
+                    }
+                }
+
+                window.addEventListener('scroll', handleScroll);
+                window.addEventListener('load', initHeader);
+                window.addEventListener('resize', initHeader);
+
+                document.addEventListener('DOMContentLoaded', function() {
+                    
+                    // 1. Move Subtitle to Content Area
+                    const headerSubtitle = document.querySelector('header .subtitle');
+                    const mainContainer = document.querySelector('main.container');
+                    
+                    if (headerSubtitle && mainContainer && !document.querySelector('.moved-subtitle')) {
+                        const newSubtitle = headerSubtitle.cloneNode(true);
+                        newSubtitle.classList.add('moved-subtitle');
+                        newSubtitle.style.cssText = `
+                            display: block; margin: 20px 0 30px 0; color: var(--muted); font-size: 15px; 
+                            line-height: 1.6; border-left: 4px solid var(--accent); padding-left: 15px;
+                            background: var(--card); padding: 15px; border-radius: 0 8px 8px 0;
+                        `;
+                        mainContainer.insertBefore(newSubtitle, mainContainer.firstChild);
+                    }
+
+                    // 2. Mobile Tabs Logic
+                    const pages = document.querySelectorAll('.page');
+                    pages.forEach(page => {
+                        const slideId = page.id.replace('page-', '');
+                        
+                        // Wrap content for scroll margin fix
+                        const imgContainer = document.getElementById('img-view-' + slideId);
+                        const textContainer = document.getElementById('text-view-' + slideId);
+                        if(imgContainer) imgContainer.classList.add('slide-content-wrapper');
+                        if(textContainer) textContainer.classList.add('slide-content-wrapper');
+
+                        // Create Tab Bar
+                        const tabBar = document.createElement('div');
+                        tabBar.className = 'mobile-tab-bar';
+                        
+                        const modes = [
+                            { label: '🖼️ 圖片', value: 'img', icon: '' },
+                            { label: '📄 文字', value: 'text', icon: '' },
+                            { label: '📝 備忘', value: 'notes', icon: '' }
+                        ];
+                        
+                        const btns = {};
+
+                        modes.forEach(mode => {
+                            const btn = document.createElement('button');
+                            btn.innerHTML = mode.label;
+                            // Base Tab Button Style
+                            btn.style.cssText = `
+                                flex: 1; padding: 8px; font-size: 14px; border: none; 
+                                background: transparent; cursor: pointer; color: var(--muted); 
+                                transition: all 0.2s; margin: 0 4px; border-radius: 8px; font-weight: 500;
+                            `;
+                            
+                            btn.onclick = (e) => {
+                                e.preventDefault();
+                                switchTab(mode.value);
+                                // Optional: scroll to top of section slightly if needed
+                            };
+                            
+                            tabBar.appendChild(btn);
+                            btns[mode.value] = btn;
+                        });
+
+                        page.insertBefore(tabBar, page.firstChild);
+
+                        const notesContainer = page.querySelector('.notes');
+                        if(notesContainer) notesContainer.classList.add('slide-content-wrapper');
+                        const desktopToggle = page.querySelector('.slide-controls');
+
+                        function switchTab(mode) {
+                            // Update Buttons
+                            Object.values(btns).forEach(b => {
+                                b.style.background = 'transparent';
+                                b.style.color = 'var(--muted)';
+                                b.style.boxShadow = 'none';
+                            });
+                            
+                            // Active State (Pill style)
+                            if(btns[mode]) {
+                                btns[mode].style.background = '#e0e7ff'; // Light Indigo
+                                btns[mode].style.color = '#4338ca'; // Indigo 700
+                                btns[mode].style.boxShadow = 'inset 0 0 0 1px #c7d2fe';
+                            }
+
+                            // Visibility
+                            if(imgContainer) imgContainer.style.display = (mode === 'img' ? 'block' : 'none');
+                            if(textContainer) textContainer.style.display = (mode === 'text' ? 'block' : 'none');
+                            if(notesContainer) notesContainer.style.display = (mode === 'notes' ? 'block' : 'none');
+                            
+                            if(desktopToggle) desktopToggle.style.display = 'none';
+                        }
+
+                        // Init
+                        if (window.innerWidth <= 768) {
+                            switchTab('img');
+                        }
+                    });
+                    
+                    // Recalculate header height one more time after DOM manip
+                    setTimeout(handleScroll, 100);
+                });
+            </script>
+            """
+    def update_legacy_html(self):
+        filepath = filedialog.askopenfilename(
+            title="選擇要升級的舊版 HTML (slide.html)", 
+            filetypes=(("HTML files", "*.html"), ("All files", "*.*"))
+        )
+        if not filepath: return
+
+        try:
+            with open(filepath, "r", encoding="utf-8") as f:
+                content = f.read()
+
+            # Identify the old style/script block using regex
+            pattern = re.compile(r'<style>\s*:root\s*\{.*?--header-height.*?</script>', re.DOTALL)
+            
+            if pattern.search(content):
+                new_block = self.get_html_style_script()
+                new_content = pattern.sub(new_block, content)
+                
+                # Create backup
+                backup_path = filepath + ".bak"
+                with open(backup_path, "w", encoding="utf-8") as f_bak:
+                    f_bak.write(content)
+                
+                # Write new content
+                with open(filepath, "w", encoding="utf-8") as f_out:
+                    f_out.write(new_content)
+                
+                messagebox.showinfo("成功", f"檔案已升級！\n舊檔案已備份為: {os.path.basename(backup_path)}")
+                webbrowser.open(filepath)
+            else:
+                messagebox.showwarning("失敗", "無法識別舊版的樣式區塊，請確認這是由 PPTPlaner 生成的檔案。")
+
+        except Exception as e:
+            messagebox.showerror("錯誤", f"升級過程發生錯誤: {e}")
+
+
     def generate_image_slide_html(self):
         html_path = self.guide_html_path.get()
         if not html_path or not os.path.exists(html_path):
@@ -393,112 +738,9 @@ class App(tk.Tk):
                 if '<main class="container">' in content:
                     content = content.replace('<main class="container">', f'<main class="container">\n{video_html}', 1)
 
-            # Inject CSS and JS
-            # We define styles for the toggle button and the image container.
-            # We also add sticky positioning to the left column (.slide) so it stays visible 
-            # while scrolling through long notes in the right column (.notes).
-            style_script = """
-            <style>
-                :root {
-                    --header-height: 80px; /* Fallback initial value */
-                }
-
-                .img-text-toggle-btn {
-                    padding: 6px 12px;
-                    cursor: pointer;
-                    background: #4f46e5; /* Indigo-600 */
-                    color: white;
-                    border: none;
-                    border-radius: 6px;
-                    font-size: 14px;
-                    transition: background 0.2s;
-                }
-                .img-text-toggle-btn:hover { background: #4338ca; }
-                
-                .slide-img-container img {
-                    max-width: 100%;
-                    height: auto;
-                    border: 1px solid #e5e7eb;
-                    border-radius: 8px;
-                    box-shadow: 0 2px 4px rgba(0,0,0,0.05);
-                }
-
-                /* Layout Improvements for Sticky Slide */
-                .page {
-                    display: flex;
-                    border-bottom: 1px solid var(--border);
-                    padding: 30px 0;
-                    margin-bottom: 0;
-                    align-items: flex-start; /* Align to top */
-                }
-                
-                .slide {
-                    flex: 1;
-                    padding-right: 30px;
-                    border-right: 1px solid var(--border);
-                    min-width: 0;
-                    position: sticky; /* Make the left column sticky */
-                    /* Dynamic top position: Header height + 20px buffer */
-                    top: calc(var(--header-height) + 20px);
-                    height: fit-content; 
-                    /* Dynamic max-height to fit in viewport */
-                    max-height: calc(100vh - var(--header-height) - 40px);
-                    overflow-y: auto;
-                }
-                
-                .notes {
-                    flex: 1;
-                    padding-left: 30px;
-                    min-width: 0;
-                }
-                
-                /* Mobile Responsiveness: Stack them on small screens */
-                @media (max-width: 768px) {
-                    .page { display: block; }
-                    .slide { 
-                        padding-right: 0; 
-                        border-right: none; 
-                        border-bottom: 1px solid var(--border); 
-                        margin-bottom: 20px; 
-                        padding-bottom: 20px;
-                        position: static; /* Disable sticky on mobile */
-                        max-height: none;
-                    }
-                    .notes { padding-left: 0; }
-                }
-            </style>
-            <script>
-                function toggleImageText(id) {
-                    var imgDiv = document.getElementById('img-view-' + id);
-                    var textDiv = document.getElementById('text-view-' + id);
-                    var btn = document.getElementById('btn-toggle-' + id);
-                    
-                    if (imgDiv.style.display !== 'none') {
-                        // Currently showing image, switch to text
-                        imgDiv.style.display = 'none';
-                        textDiv.style.display = 'block';
-                        btn.innerText = '切換為圖片 (Show Image)';
-                    } else {
-                        // Currently showing text, switch to image
-                        imgDiv.style.display = 'block';
-                        textDiv.style.display = 'none';
-                        btn.innerText = '切換為文字 (Show Text)';
-                    }
-                }
-
-                // Dynamic Header Height Calculation
-                function updateHeaderHeight() {
-                    const header = document.querySelector('header');
-                    if (header) {
-                        const height = header.offsetHeight;
-                        document.documentElement.style.setProperty('--header-height', height + 'px');
-                    }
-                }
-                // Update on load and resize
-                window.addEventListener('load', updateHeaderHeight);
-                window.addEventListener('resize', updateHeaderHeight);
-            </script>
-            """
+            # Inject CSS and JS using the new method
+            style_script = self.get_html_style_script()
+            
             if "</head>" in content:
                 content = content.replace("</head>", f"{style_script}</head>")
             else:
