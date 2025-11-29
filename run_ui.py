@@ -11,7 +11,7 @@ import mimetypes
 
 import requests
 
-version = "v2.7.1"
+version = "v2.8"
 
 class App(tk.Tk):
     def __init__(self, available_models):

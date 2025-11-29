@@ -10,14 +10,75 @@ CONFIG_PATH = ROOT / "config.yaml"
 AGENTS_MD_PATH = ROOT / "AGENTS.md"
 ERROR_LOG_PATH = ROOT / "error.log"
 
+# --- Research Logger ---
+class ResearchLogger:
+    def __init__(self, root_dir):
+        self.log_dir = root_dir / "logs"
+        self.log_dir.mkdir(exist_ok=True)
+        self.log_file = self.log_dir / f"{datetime.now().strftime('%Y%m%d%H%M%S')}.log"
+        print(f"  ▶ [Research Log] Detailed log being written to: {self.log_file.name}", flush=True)
+
+    def log(self, msg: str):
+        timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        try:
+            with open(self.log_file, "a", encoding="utf-8") as f:
+                f.write(f"[{timestamp}] {msg}\n")
+        except Exception as e:
+            print(f"[Logger Error] {e}", file=sys.stderr)
+
+    def log_separator(self, title: str = ""):
+        try:
+            with open(self.log_file, "a", encoding="utf-8") as f:
+                f.write(f"\n{'='*80}\n{title}\n{'='*80}\n")
+        except Exception: pass
+
+    def log_block(self, title: str, content: str):
+        self.log(f"--- {title} ---")
+        try:
+            with open(self.log_file, "a", encoding="utf-8") as f:
+                f.write(f"{content}\n")
+            self.log(f"--- End of {title} ---\n")
+        except Exception: pass
+
+    def log_json(self, title: str, data: dict | list):
+        self.log_block(title, json.dumps(data, ensure_ascii=False, indent=2))
+
+_research_logger = None
+
+def init_logger(root_dir: Path):
+    global _research_logger
+    _research_logger = ResearchLogger(root_dir)
+
+def rlog(msg: str):
+    if _research_logger: _research_logger.log(msg)
+
+def rlog_phase(phase_name: str):
+    if _research_logger: _research_logger.log_separator(phase_name)
+
+def rlog_data(title: str, data):
+    if _research_logger: _research_logger.log_json(title, data)
+
+def rlog_block(title: str, content: str):
+    if _research_logger: _research_logger.log_block(title, content)
+
+
 # --- Utility Functions ---
-def print_header(title: str): 
+def print_header(title: str):
     bar = "=" * 60; print(f"\n{bar}\n  {title}\n{bar}", flush=True)
-def print_success(msg: str): print(f"  ✓ {msg}", flush=True)
-def print_info(msg: str): print(f"  ▶ {msg}", flush=True)
+    rlog_phase(title) # Log header
+
+def print_success(msg: str):
+    print(f"  ✓ {msg}", flush=True)
+    rlog(f"SUCCESS: {msg}")
+
+def print_info(msg: str):
+    print(f"  ▶ {msg}", flush=True)
+    rlog(f"INFO: {msg}")
+
 def print_error(msg: str, exit_code: int = 1):
     error_message = f"  ✗ [ERROR] {msg}"
     print(error_message, file=sys.stderr, flush=True)
+    rlog(f"ERROR: {msg}")
     try:
         with open(ERROR_LOG_PATH, "a", encoding="utf-8") as f:
             f.write(f"--- {datetime.now().isoformat()} ---\n{msg}\n\n")
@@ -28,7 +89,7 @@ def print_error(msg: str, exit_code: int = 1):
 def sanitize_filename(name: str) -> str:
     """Removes characters that are invalid in Windows filenames and replaces spaces."""
     name = name.replace(' ', '_')
-    return re.sub(r'[\\/*?:"<>|]', '', name)
+    return re.sub(r'[\\/*?:\"<>|]', '', name)
 
 # --- AI & Command Execution ---
 _agent_specs_cache = None
@@ -71,11 +132,22 @@ def run_agent(agent: str, mode: str, vars_map: dict, retries: int = 3, delay: in
                          "Do not avoid sensitive subjects; handle them with an objective, academic tone suitable for a learning environment.")
 
     prompt_parts = [safety_preamble, f"Your specific task is '{mode}'.", "--- INSTRUCTIONS ---", instructions, "--- CONTEXT & INPUTS ---"]
+    
+    # Prepare log for inputs
+    log_inputs = {}
+
     for key, value in vars_map.items():
         if key.endswith("_path") and value and os.path.exists(value):
-            prompt_parts.append(f"Content for '{os.path.basename(value)}':\n```\n{Path(value).read_text(encoding='utf-8')}\n```")
-        elif key.endswith("_content") and value: prompt_parts.append(f"Provided Content for '{key}':\n```\n{value}\n```")
-        else: prompt_parts.append(f"- {key}: {value}")
+            file_content = Path(value).read_text(encoding='utf-8')
+            prompt_parts.append(f"Content for '{os.path.basename(value)}':\n```\n{file_content}\n```")
+            log_inputs[key] = f"[File Content from {os.path.basename(value)}]" # Don't double log huge files in inputs section if possible, or just reference
+        elif key.endswith("_content") and value: 
+            prompt_parts.append(f"Provided Content for '{key}':\n```\n{value}\n```")
+            log_inputs[key] = value # Log the content for analysis
+        else: 
+            prompt_parts.append(f"- {key}: {value}")
+            log_inputs[key] = value
+    
     prompt_parts.append("--- YOUR TASK ---")
     prompt_parts.append("Generate your response. Output ONLY the content required (e.g., pure JSON, pure Markdown). No conversational text.")
     final_prompt = "\n".join(prompt_parts)
@@ -88,9 +160,21 @@ def run_agent(agent: str, mode: str, vars_map: dict, retries: int = 3, delay: in
 
     for attempt in range(retries):
         print_info(f"Calling {agent_cmd.capitalize()} for {mode}... (Attempt {attempt + 1}/{retries})")
+        
+        # --- LOGGING AGENT CALL ---
+        rlog(f"AGENT CALL START: {mode} (Attempt {attempt + 1})")
+        rlog_data(f"Agent Inputs ({mode})", log_inputs)
+        # --------------------------
+
         try:
             result = run_command(cmd, input_text=final_prompt)
             output = result.stdout.strip()
+            
+            # --- LOGGING AGENT RESPONSE ---
+            rlog_block(f"Agent Raw Output ({mode})", output)
+            rlog("AGENT CALL END")
+            # ------------------------------
+
             if output:
                 return output # Success
 
@@ -100,19 +184,19 @@ def run_agent(agent: str, mode: str, vars_map: dict, retries: int = 3, delay: in
         except subprocess.CalledProcessError as e:
             # This case handles when the command itself fails (e.g., API error)
             stderr_lower = e.stderr.lower()
+            rlog(f"AGENT ERROR: {e.stderr.strip()}")
             if "authentication" in stderr_lower or "login required" in stderr_lower:
                 print_error("認證失敗或過期 (Authentication failed or expired)。", exit_code=None)
                 print_info("請在瀏覽器中完成登入，或在另一個終端機中執行 `gemini auth login`。")
-                # No longer blocking with input(), let the GUI handle the pause.
             elif "exhausted" in stderr_lower or "quota" in stderr_lower:
                 print_error("API quota 已用盡 (API quota exhausted)。", exit_code=None)
                 print_info("請在 GUI 中選擇 '繼續' 來等待配額恢復，或選擇 '切換模型' 來嘗試其他模型。")
-                # No longer blocking with input(), let the GUI handle the pause.
             else:
                 print_error(f"指令執行失敗 (Exit Code: {e.returncode}): {" ".join(e.cmd)}\n  STDERR: {e.stderr.strip()}", exit_code=None)
 
         if attempt < retries - 1:
             print_info(f"Retrying in {delay}s...")
+            rlog(f"Waiting {delay}s before retry...")
             time.sleep(delay)
 
     print_error(f"AI failed to generate a response for {mode} after {retries} attempts.", exit_code=1)
@@ -163,11 +247,13 @@ def parse_ai_json_output(output: str, mode: str) -> dict | None:
             nested_data = parse_ai_json_output(nested_str, f"{mode} (Nested)")
             return nested_data if nested_data is not None else data 
         
+        rlog_data(f"Parsed JSON Data ({mode})", data) # Log parsed data
         return data
 
     except Exception as e:
         # Log error
         print_error(f"{mode} JSON parse failed. Error: {e}", exit_code=None)
+        rlog(f"JSON PARSE FAILURE: {e}")
         
         # Save debug info
         timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
@@ -255,6 +341,7 @@ def generate_svgs(cfg: dict, pages: list, output_dir: Path, slides_dir: Path, no
             for attempt in range(MAX_SLIDE_SVG_REWORKS + 1):
                 if attempt > 0:
                     print_info(f"Reworking Slide SVG for page {page}... (Attempt {attempt}/{MAX_SLIDE_SVG_REWORKS})")
+                    rlog(f"Page {page}: Reworking Slide SVG (Attempt {attempt})")
                 
                 raw_svg_attempt = run_agent(cfg["agent"], "CREATE_SLIDE_SVG", svg_vars, retries=1, model_name=model_name)
                 
@@ -275,15 +362,22 @@ def generate_svgs(cfg: dict, pages: list, output_dir: Path, slides_dir: Path, no
                      print_error(f"Validation JSON parse failed for page {page} on attempt {attempt}.", exit_code=None)
                      continue
 
+                feedback = validation_result.get("feedback", "No feedback provided.")
+                rlog(f"Page {page} Slide SVG Validation: Valid={validation_result.get('is_valid')}, Acceptable={validation_result.get('is_acceptable')}")
+                rlog(f"Feedback: {feedback}")
+
                 if validation_result.get("is_valid", False):
                     print_success(f"Perfect Slide SVG validation passed for page {page}.")
+                    rlog(f"DECISION: Perfect Slide SVG found. Stopping loop.")
                     perfect_slide_svg = last_slide_svg_attempt
                     break
                 elif validation_result.get("is_acceptable", False):
                     print_success(f"Slide SVG validation 'acceptable' for page {page}.")
+                    rlog(f"DECISION: Acceptable Slide SVG found. Storing and continuing to seek perfection.")
                     acceptable_slide_svg = last_slide_svg_attempt
+                else:
+                    rlog(f"DECISION: Slide SVG rejected. Retrying.")
                 
-                feedback = validation_result.get("feedback", "No feedback provided.")
                 print_error(f"Slide SVG validation failed for page {page}. Feedback: {feedback}", exit_code=None)
                 svg_vars["rework_feedback"] = feedback
 
@@ -310,16 +404,19 @@ def generate_svgs(cfg: dict, pages: list, output_dir: Path, slides_dir: Path, no
             for attempt in range(MAX_CONCEPTUAL_SVG_REWORKS + 1):
                 if attempt > 0:
                     print_info(f"Reworking Conceptual SVG for page {page}... (Attempt {attempt}/{MAX_CONCEPTUAL_SVG_REWORKS})")
+                    rlog(f"Page {page}: Reworking Conceptual SVG (Attempt {attempt})")
 
                 raw_conceptual_svg = run_agent(cfg["agent"], "CREATE_CONCEPTUAL_SVG", conceptual_vars, retries=1, model_name=model_name)
 
                 if "NO_CONCEPTUAL_SVG_NEEDED" in raw_conceptual_svg:
                     print_info(f"Agent decided no conceptual SVG is needed for page {page}.")
+                    rlog(f"Page {page}: Agent decided NO_CONCEPTUAL_SVG_NEEDED.")
                     last_conceptual_svg_attempt = "NO_CONCEPTUAL_SVG_NEEDED" # Special marker
                     break
                 
                 if "CONCEPTUAL_SVG_FAILED" in raw_conceptual_svg:
                     print_error(f"Conceptual SVG generation failed for page {page} on attempt {attempt}.", exit_code=None)
+                    rlog(f"Page {page}: Agent reported CONCEPTUAL_SVG_FAILED.")
                     continue
 
                 svg_match = re.search(r"<svg.*?</svg>", raw_conceptual_svg, re.DOTALL)
@@ -339,15 +436,22 @@ def generate_svgs(cfg: dict, pages: list, output_dir: Path, slides_dir: Path, no
                      print_error(f"Validation JSON parse failed for page {page} on attempt {attempt}.", exit_code=None)
                      continue
 
+                feedback = validation_result.get("feedback", "No feedback provided.")
+                rlog(f"Page {page} Conceptual SVG Validation: Valid={validation_result.get('is_valid')}, Acceptable={validation_result.get('is_acceptable')}")
+                rlog(f"Feedback: {feedback}")
+
                 if validation_result.get("is_valid", False):
                     print_success(f"Perfect Conceptual SVG validation passed for page {page}.")
+                    rlog(f"DECISION: Perfect Conceptual SVG found. Stopping loop.")
                     perfect_conceptual_svg = last_conceptual_svg_attempt
                     break
                 elif validation_result.get("is_acceptable", False):
                     print_success(f"Conceptual SVG validation 'acceptable' for page {page}.")
+                    rlog(f"DECISION: Acceptable Conceptual SVG found. Storing and continuing.")
                     acceptable_conceptual_svg = last_conceptual_svg_attempt
+                else:
+                    rlog(f"DECISION: Conceptual SVG rejected. Retrying.")
 
-                feedback = validation_result.get("feedback", "No feedback provided.")
                 print_error(f"Conceptual SVG validation failed for page {page}. Feedback: {feedback}", exit_code=None)
                 conceptual_vars["rework_feedback"] = feedback
 
@@ -360,7 +464,6 @@ def generate_svgs(cfg: dict, pages: list, output_dir: Path, slides_dir: Path, no
             if final_conceptual_svg:
                 progress[page]["conceptual_svg"] = "completed"
                 progress_file.write_text(json.dumps(progress, indent=4, ensure_ascii=False), encoding="utf-8")
-
 
 
 def _combine_slides_into_single_file(slides_dir: Path):
@@ -389,6 +492,10 @@ def _combine_slides_into_single_file(slides_dir: Path):
         print_error(f"Failed to write combined slides file: {e}", exit_code=None)
 
 def main():
+    # Initialize logger as early as possible
+    init_logger(ROOT)
+    rlog("--- NEW RUN STARTED ---")
+
     parser = argparse.ArgumentParser(description="PPTPlaner Orchestrator")
     # Use dest='source_file' to match the key in config.yaml
     parser.add_argument("--source", dest="source_file", help="Source file to process")
@@ -409,6 +516,7 @@ def main():
     args = parser.parse_args()
 
     cfg = get_config(args)
+    rlog_data("Configuration", cfg) # Log configuration
     
     if not cfg.get("source_file"):
         print_error("未提供來源檔案。請在 UI 中選擇或在 config.yaml 中設定。")
@@ -419,6 +527,8 @@ def main():
         source_path = ROOT / source_path
     if not source_path.exists():
         print_error(f"來源檔案不存在: {source_path}")
+    
+    rlog(f"Source File: {source_path}")
 
     # --- ANALYZE_SOURCE_DOCUMENT with Rework Loop ---
     perfect_analysis_data = {}
@@ -432,6 +542,7 @@ def main():
     for attempt in range(MAX_ANALYSIS_REWORKS + 1):
         if attempt > 0:
             print_info(f"Reworking source document analysis... (Attempt {attempt}/{MAX_ANALYSIS_REWORKS})")
+            rlog(f"Reworking Analysis (Attempt {attempt})")
         
         analysis_output = run_agent(cfg["agent"], "ANALYZE_SOURCE_DOCUMENT", analysis_vars, retries=1, model_name=cfg.get("gemini_model"))
         if not analysis_output:
@@ -453,15 +564,22 @@ def main():
         if validation_json:
             validation_result = parse_ai_json_output(validation_json, "VALIDATE_ANALYSIS") or {}
 
+        feedback = validation_result.get("feedback", "No feedback provided.")
+        rlog(f"Analysis Validation: Valid={validation_result.get('is_valid')}, Acceptable={validation_result.get('is_acceptable')}")
+        rlog(f"Feedback: {feedback}")
+
         if validation_result.get("is_valid", False):
             print_success("Perfect source document analysis passed. Finishing.")
+            rlog("DECISION: Perfect Analysis found. Stopping loop.")
             perfect_analysis_data = current_analysis_data
             break
         elif validation_result.get("is_acceptable", False):
             print_success("Source document analysis 'acceptable'. Storing as fallback and continuing.")
+            rlog("DECISION: Acceptable Analysis found. Storing and continuing.")
             acceptable_analysis_data = current_analysis_data
+        else:
+            rlog("DECISION: Analysis rejected. Retrying.")
         
-        feedback = validation_result.get("feedback", "No feedback provided.")
         print_error(f"Source document analysis failed. Feedback: {feedback}", exit_code=None)
         analysis_vars["rework_feedback"] = feedback
 
@@ -479,6 +597,8 @@ def main():
     if not final_analysis_data:
         print_error("Failed to generate any analysis content. Using placeholders.", exit_code=1)
 
+    rlog_data("Final Analysis Data Selected", final_analysis_data)
+
     # --- Create Output Directory and Save Overview ---
     project_title = final_analysis_data.get("project_title", "Untitled_Run")
     sanitized_title = re.sub(r'[^a-zA-Z0-9_-]', '', project_title.replace(" ", "_"))
@@ -487,6 +607,7 @@ def main():
     output_dir = OUTPUT_ROOT / f"{run_datetime.strftime('%Y%m%d_%H%M%S')}_{sanitized_title}"
     output_dir.mkdir(parents=True)
     print_success(f"Created unique output directory: {output_dir.relative_to(ROOT)}")
+    rlog(f"Output Directory: {output_dir}")
 
     # Prepare and save the rich overview.md
     doc_title = final_analysis_data.get('document_title', 'N/A')
@@ -562,6 +683,8 @@ def main():
         pages = plan.get("pages", [])
         for page_item in pages: page_item["topic"] = sanitize_filename(page_item["topic"])
 
+    rlog_data("Final Plan Pages", pages)
+
     if not args.slides_only:
         # --- Holistic Slide Generation ---
         print_header(f"Phase 2a: Generating Slides ({len(pages)} pages)")
@@ -584,6 +707,7 @@ def main():
             for attempt in range(MAX_DECK_REWORKS + 1):
                 if attempt > 0:
                     print_info(f"Reworking entire slide deck... (Attempt {attempt}/{MAX_DECK_REWORKS})")
+                    rlog(f"Reworking Deck (Attempt {attempt})")
 
                 deck_output = run_agent(cfg["agent"], "DECK", deck_vars, retries=1, model_name=cfg.get("gemini_model"))
                 if not deck_output:
@@ -607,17 +731,24 @@ def main():
                 validation_result = {"is_valid": False, "is_acceptable": False, "feedback": "Validation agent returned no response."}
                 if validation_json:
                     validation_result = parse_ai_json_output(validation_json, "VALIDATE_DECK") or {}
+                
+                feedback = validation_result.get("feedback", "No feedback provided.")
+                rlog(f"Deck Validation: Valid={validation_result.get('is_valid')}, Acceptable={validation_result.get('is_acceptable')}")
+                rlog(f"Feedback: {feedback}")
 
                 if validation_result.get("is_valid", False):
                     print_success("Perfect slide deck validation passed. Finishing.")
+                    rlog("DECISION: Perfect Deck found. Stopping loop.")
                     perfect_slides = generated_slides
                     break  # Perfection found, exit loop immediately
                 elif validation_result.get("is_acceptable", False):
                     print_success("Slide deck validation 'acceptable'. Storing as fallback and continuing.")
+                    rlog("DECISION: Acceptable Deck found. Storing and continuing.")
                     acceptable_slides = generated_slides
                     # Do not break; continue to strive for a perfect version
+                else:
+                    rlog("DECISION: Deck rejected. Retrying.")
                 
-                feedback = validation_result.get("feedback", "No feedback provided.")
                 print_error(f"Slide deck validation failed. Feedback: {feedback}", exit_code=None)
                 deck_vars["rework_feedback"] = feedback
 
@@ -702,6 +833,7 @@ def main():
                 for attempt in range(MAX_REWORKS + 1):
                     if attempt > 0:
                         print_info(f"Reworking memo for page {page}... (Attempt {attempt}/{MAX_REWORKS})")
+                        rlog(f"Page {page}: Reworking Memo (Attempt {attempt})")
                     
                     current_attempt_content = run_agent(cfg["agent"], "MEMO", memo_vars, retries=1, model_name=cfg.get("gemini_model"))
 
@@ -721,16 +853,23 @@ def main():
                     validation_vars = {"slide_content": slide_content, "memo_content": last_memo_attempt}
                     validation_json = run_agent(cfg["agent"], "VALIDATE_MEMO", validation_vars, retries=2, model_name=cfg.get("gemini_model"))
                     validation_result = parse_ai_json_output(validation_json, "VALIDATE_MEMO") or {}
+                    
+                    feedback = validation_result.get("feedback", "No feedback provided.")
+                    rlog(f"Page {page} Memo Validation: Valid={validation_result.get('is_valid')}, Acceptable={validation_result.get('is_acceptable')}")
+                    rlog(f"Feedback: {feedback}")
 
                     if validation_result.get("is_valid", False):
                         print_success(f"Validation passed for page {page}. Finishing.")
+                        rlog(f"DECISION: Perfect Memo found for page {page}. Stopping loop.")
                         perfect_memo = last_memo_attempt
                         break
                     elif validation_result.get("is_acceptable", False):
                         print_success(f"Validation 'acceptable' for page {page}. Storing as fallback.")
+                        rlog(f"DECISION: Acceptable Memo found for page {page}. Storing and continuing.")
                         acceptable_memo = last_memo_attempt
+                    else:
+                        rlog(f"DECISION: Memo rejected for page {page}. Retrying.")
                     
-                    feedback = validation_result.get("feedback", "No feedback provided.")
                     print_error(f"Validation failed for page {page}. Feedback: {feedback}", exit_code=None)
                     memo_vars["rework_feedback"] = feedback
 
@@ -743,27 +882,10 @@ def main():
                     final_memo_content = acceptable_memo
                 elif last_memo_attempt:
                     print_error(f"No valid or acceptable memo found for page {page}. Saving the last raw attempt with a warning.", exit_code=None)
-                    warning_header = """> [!WARNING]
-> **AI 自動修正失敗**
->
-> 以下是由 AI 生成的最後一版備忘稿。它未能完全通過品質檢驗，可能包含錯誤或遺漏。請仔細核對並手動修正。
->
-> ---
-
-"""
+                    warning_header = "> [!WARNING]\n> **AI 自動修正失敗**\n>\n> 以下是由 AI 生成的最後一版備忘稿。它未能完全通過品質檢驗，可能包含錯誤或遺漏。請仔細核對並手動修正。\n>\n> ---\n\n"
                     final_memo_content = warning_header + last_memo_attempt
                 else:
-                    final_memo_content = """### 備忘稿生成失敗
-
-AI 未能為此頁投影片生成備忘稿，所有嘗試均返回空內容。
-
-**可能原因：**
-1.  **主題敏感性**：此頁主題可能觸發了 AI 的安全機制。
-2.  **AI 暫時性錯誤**：AI 模型在處理此請求時遇到暫時性問題。
-
-**建議操作：**
-*   請直接參考原始文件 (`source_file`) 來準備此頁的內容。
-"""
+                    final_memo_content = "### 備忘稿生成失敗\n\nAI 未能為此頁投影片生成備忘稿，所有嘗試均返回空內容。\n\n**可能原因：**\n1.  **主題敏感性**：此頁主題可能觸發了 AI 的安全機制。\n2.  **AI 暫時性錯誤**：AI 模型在處理此請求時遇到暫時性問題。\n\n**建議操作：**\n*   請直接參考原始文件 (`source_file`) 來準備此頁的內容。"
                     print_error(f"Failed to generate any memo content for page {page} after all attempts. Writing placeholder.", exit_code=None)
 
                 note_path.write_text(final_memo_content, encoding="utf-8")
@@ -788,6 +910,7 @@ AI 未能為此頁投影片生成備忘稿，所有嘗試均返回空內容。
     # Auto-open the output directory
     os.startfile(output_dir)
     print_header("Run Complete!")
+    rlog("--- RUN COMPLETE ---")
 
 if __name__ == "__main__":
     main()
