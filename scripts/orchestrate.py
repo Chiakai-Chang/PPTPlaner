@@ -206,67 +206,183 @@ def parse_ai_json_output(output: str, mode: str) -> dict | None:
     """
     Parses the AI's output, handling raw JSON, JSON in markdown fences,
     and the gemini tool's wrapper object. Returns None on failure.
+    Includes robust fallback parsing for common AI JSON errors.
     """
+    
+    # 0. Pre-check for Gemini Wrapper (Standard JSON structure)
+    # Sometimes the wrapper itself is valid JSON, we should peel it first.
     try:
-        # Helper to try loading JSON
-        def try_load(text):
-            return json.loads(text)
+        # Attempt to parse the outer layer just to check for "response" wrapper
+        # This is separate from the main logic because 'output' might be messy text
+        # but the wrapper is usually clean JSON.
+        outer_data = json.loads(output)
+        if isinstance(outer_data, dict) and "response" in outer_data and isinstance(outer_data["response"], str):
+             # Recurse with the inner string
+             return parse_ai_json_output(outer_data["response"], f"{mode} (Nested)")
+    except:
+        pass # Not a clean wrapper, proceed to standard cleanup
 
-        data = None
-        # 1. Try direct parse
-        try: data = try_load(output); 
-        except: pass
-
-        if data is None:
-            # 2. Try stripping markdown fences
-            match = re.search(r"```(?:json)?\s*(.*?)```", output, re.DOTALL)
-            if match:
-                try: data = try_load(match.group(1).strip())
-                except: pass
-        
-        if data is None:
-            # 3. Try finding outer braces/brackets
-            output_strip = output.strip()
-            for start_char, end_char in [('{', '}'), ('[', ']')]:
-                start = output_strip.find(start_char)
-                end = output_strip.rfind(end_char)
-                if start != -1 and end != -1 and end > start:
-                    try: 
-                        candidate = output_strip[start:end+1]
-                        data = try_load(candidate)
-                        if data is not None: break
-                    except: pass
-        
-        if data is None:
-            raise ValueError("Could not extract valid JSON from output.")
-
-        # If the parsed data has a "response" field and it's a string... (Gemini wrapper handling)
+    # 1. Clean up Markdown fences
+    clean_output = output.strip()
+    match = re.search(r"```(?:json)?\s*(.*?)```", clean_output, re.DOTALL)
+    if match:
+        clean_output = match.group(1).strip()
+    
+    # 2. Try standard parsing (on cleaned output)
+    try:
+        data = json.loads(clean_output)
+        # Double check wrapper inside cleaned output (rare but possible)
         if isinstance(data, dict) and "response" in data and isinstance(data["response"], str):
-            nested_str = data["response"]
-            # Recursive call to parse the inner string
-            nested_data = parse_ai_json_output(nested_str, f"{mode} (Nested)")
-            return nested_data if nested_data is not None else data 
-        
-        rlog_data(f"Parsed JSON Data ({mode})", data) # Log parsed data
+             return parse_ai_json_output(data["response"], f"{mode} (Nested)")
+        rlog_data(f"Parsed JSON Data ({mode})", data)
         return data
+    except json.JSONDecodeError as e:
+        rlog(f"Standard JSON parse failed for {mode}: {e}")
+        pass # Continue to fallback
 
-    except Exception as e:
-        # Log error
-        print_error(f"{mode} JSON parse failed. Error: {e}", exit_code=None)
-        rlog(f"JSON PARSE FAILURE: {e}")
+    rlog(f"Attempting regex fallback for {mode}...")
+    
+    # 3. Fallback: List Extraction (for DECK, PLAN, PLAN_FROM_SLIDES)
+    # Used when we expect a list of items (e.g., slides or pages)
+    if any(x in mode for x in ["DECK", "slides", "PLAN"]):
+        rlog(f"Attempting list regex parsing for {mode}...")
+        extracted_items = []
         
-        # Save debug info
-        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-        debug_dir = OUTPUT_ROOT / "debug"
-        debug_dir.mkdir(parents=True, exist_ok=True)
-        debug_file = debug_dir / f"parse_fail_{mode}_{timestamp}.txt"
-        try:
-            debug_file.write_text(f"ERROR: {e}\n\n--- RAW OUTPUT ---\n{output}", encoding="utf-8")
-            print_info(f"Failed output saved to: {debug_file.relative_to(ROOT)}")
-        except Exception as write_err:
-            print_error(f"Failed to save debug file: {write_err}", exit_code=None)
+        # Determine list item boundaries based on common keys
+        # DECK/slides usually have "page" and "content"
+        # PLAN usually has "page" and "topic"
+        
+        raw_text = clean_output
+        # Remove outer array brackets if partially present
+        if raw_text.startswith('[') and raw_text.endswith(']'):
+             raw_text = raw_text[1:-1]
+        elif raw_text.startswith('{') and raw_text.endswith('}'):
+             raw_text = raw_text[1:-1] # Try to unwrap object if list is inside
+             
+        # Split chunks by "page": which is the most consistent anchor
+        chunks = re.split(r',?\s*\{\s*"page":', raw_text)
+        
+        for chunk in chunks:
+            if not chunk.strip(): continue
             
-        return None
+            item = {}
+            try:
+                # Recover 'page' (since we split by it, it's at the start of chunk or we need to add it back)
+                # Actually, the regex consumes {"page": so chunk starts with the value
+                # e.g. "01", "topic": ...
+                
+                # Extract Page
+                page_m = re.search(r'^\s*"(\d+)"', chunk)
+                if page_m:
+                    item["page"] = page_m.group(1)
+                else:
+                    continue # Skip if no page found
+                
+                # Extract Topic
+                topic_m = re.search(r'"topic":\s*"(.*?)"', chunk)
+                if topic_m:
+                    item["topic"] = topic_m.group(1)
+                
+                # Extract Content (Crucial for DECK)
+                # Content is usually the longest field and might have unescaped quotes
+                # We capture from "content": " until the last quote of the chunk
+                content_start_m = re.search(r'"content":\s*"', chunk)
+                if content_start_m:
+                    start_idx = content_start_m.end()
+                    end_idx = chunk.rfind('"') # Naive end finding
+                    if end_idx > start_idx:
+                        content = chunk[start_idx:end_idx]
+                        # Basic cleanup
+                        content = content.replace('\\"', '"').replace('\\n', '\n')
+                        item["content"] = content
+                
+                if item.get("page"):
+                    extracted_items.append(item)
+                    
+            except Exception as e:
+                rlog(f"Failed to parse chunk in {mode}: {e}")
+                continue
+        
+        if extracted_items:
+            rlog(f"Loose parsing recovered {len(extracted_items)} items.")
+            # Return consistent structure
+            if "PLAN" in mode: return {"pages": extracted_items}
+            return {"slides": extracted_items}
+
+    # 4. Fallback: Dict Extraction (for ANALYZE_SOURCE_DOCUMENT, VALIDATE)
+    # Used when we expect a single object with specific keys
+    expected_keys = []
+    if "ANALYZE_SOURCE_DOCUMENT" in mode:
+        expected_keys = ["document_title", "project_title", "summary", "overview", "document_authors"]
+    elif "VALIDATE" in mode:
+        expected_keys = ["is_valid", "is_acceptable", "feedback"]
+        
+    if expected_keys:
+        rlog(f"Attempting dict key extraction for {mode}...")
+        extracted_data = {}
+        raw_text = clean_output
+        
+        for key in expected_keys:
+            # Pattern: "key": "VALUE"
+            # We capture until the next quote that is followed by comma or brace
+            # This is a heuristic: look for the value between " and "
+            # But the value might contain quotes.
+            # We try to find "key":\s*" then find the next property start or end of object
+            
+            try:
+                key_pattern = fr'"{key}":\s*"'
+                start_m = re.search(key_pattern, raw_text)
+                if start_m:
+                    start_idx = start_m.end()
+                    
+                    # Find potential end of this value.
+                    # It ends before the next key or end of object.
+                    # This is hard. Let's try a greedy approach:
+                    # Find the LAST quote before a comma-newline or brace-newline sequence?
+                    # Or find the next known key.
+                    
+                    min_end_idx = len(raw_text)
+                    
+                    # Check positions of other keys to boundary the current value
+                    for other_key in expected_keys:
+                        if other_key == key: continue
+                        other_m = re.search(fr'"{other_key}":', raw_text[start_idx:])
+                        if other_m:
+                            # The start of the next key is a hard stop
+                            # We need to find the last quote before this
+                            found_idx = start_idx + other_m.start()
+                            if found_idx < min_end_idx:
+                                min_end_idx = found_idx
+                    
+                    # Also check for end of object }
+                    close_m = raw_text.rfind('}')
+                    if close_m != -1 and close_m > start_idx and close_m < min_end_idx:
+                         min_end_idx = close_m
+
+                    # Now look backwards from min_end_idx for the closing quote
+                    candidate_chunk = raw_text[start_idx:min_end_idx]
+                    last_quote = candidate_chunk.rfind('"')
+                    if last_quote != -1:
+                        val = candidate_chunk[:last_quote]
+                        # Cleanup
+                        val = val.replace('\\"', '"').replace('\\n', '\n')
+                        extracted_data[key] = val
+                        
+                        # Special handling for booleans in VALIDATE
+                        if key.startswith("is_"):
+                             if "true" in val.lower(): extracted_data[key] = True
+                             elif "false" in val.lower(): extracted_data[key] = False
+                             
+            except Exception as e:
+                 rlog(f"Failed to extract key {key}: {e}")
+        
+        if extracted_data:
+            rlog(f"Loose parsing extracted {len(extracted_data)} keys.")
+            return extracted_data
+        else:
+            rlog(f"Loose parsing failed to extract any keys for {mode}.")
+
+    return None
 
 def get_config(args: argparse.Namespace) -> dict:
     cfg = yaml.safe_load(CONFIG_PATH.read_text(encoding="utf-8")) if CONFIG_PATH.exists() else {}

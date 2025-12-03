@@ -11,7 +11,7 @@ import mimetypes
 
 import requests
 
-version = "v3.0"
+version = "v3.0.1"
 
 class App(tk.Tk):
     def __init__(self, available_models):
@@ -178,7 +178,7 @@ class App(tk.Tk):
 
         # --- Reworks Frame ---
         rework_frame = tk.Frame(self.new_generation_controls_frame)
-        rework_frame.grid(row=7, column=0, columnspan=3, sticky="w", pady=5)
+        rework_frame.grid(row=8, column=0, columnspan=3, sticky="w", pady=5)
         tk.Label(rework_frame, text="最大修正次數 (0-10):").pack(side="left", padx=(0, 10))
         
         tk.Label(rework_frame, text="規劃:").pack(side="left", padx=(0, 5))
@@ -198,7 +198,7 @@ class App(tk.Tk):
 
         # --- SVG Generation Checkbox ---
         options_frame = tk.Frame(self.new_generation_controls_frame)
-        options_frame.grid(row=8, column=0, columnspan=3, sticky="w", pady=5)
+        options_frame.grid(row=9, column=0, columnspan=3, sticky="w", pady=5)
         self.svg_checkbox = tk.Checkbutton(options_frame, text="生成 SVG (實驗性功能，會增加 token 用量)", variable=self.generate_svg)
         self.svg_checkbox.pack(side="left")
 
