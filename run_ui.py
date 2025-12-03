@@ -11,7 +11,7 @@ import mimetypes
 
 import requests
 
-version = "v2.9"
+version = "v3.0"
 
 class App(tk.Tk):
     def __init__(self, available_models):
@@ -32,6 +32,9 @@ class App(tk.Tk):
         self.available_gemini_models = available_models
         self.source_file_path = tk.StringVar()
         self.slides_file_path = tk.StringVar()
+        self.input_doc_title = tk.StringVar()
+        self.input_doc_author = tk.StringVar()
+        self.input_source_url = tk.StringVar()
         self.generate_svg = tk.BooleanVar(value=False)
         self.quota_event = threading.Event()
         self.quota_event.set()
@@ -142,16 +145,32 @@ class App(tk.Tk):
         tk.Label(self.new_generation_controls_frame, text="原文書檔案 (必要):").grid(row=0, column=0, sticky="w", pady=2)
         tk.Entry(self.new_generation_controls_frame, textvariable=self.source_file_path, width=80).grid(row=1, column=0, padx=(0, 5), columnspan=2, sticky="ew")
         tk.Button(self.new_generation_controls_frame, text="瀏覽...", command=self.browse_source_file).grid(row=1, column=2)
-        tk.Label(self.new_generation_controls_frame, text="已存在的簡報檔案 (選填):").grid(row=2, column=0, sticky="w", pady=2)
-        tk.Entry(self.new_generation_controls_frame, textvariable=self.slides_file_path, width=80).grid(row=3, column=0, padx=(0, 5), columnspan=2, sticky="ew")
-        tk.Button(self.new_generation_controls_frame, text="瀏覽...", command=self.browse_slides_file).grid(row=3, column=2)
-        tk.Label(self.new_generation_controls_frame, text="客製化需求 (選填):").grid(row=4, column=0, sticky="w", pady=(10, 2))
+
+        # --- Manual Metadata Input ---
+        meta_frame = tk.LabelFrame(self.new_generation_controls_frame, text="文件資訊 (選填 - 若填寫將覆蓋 AI 分析結果)", padx=5, pady=5)
+        meta_frame.grid(row=2, column=0, columnspan=3, sticky="ew", pady=5)
+        
+        tk.Label(meta_frame, text="文件標題:").grid(row=0, column=0, sticky="w")
+        tk.Entry(meta_frame, textvariable=self.input_doc_title, width=25).grid(row=0, column=1, padx=5, sticky="ew")
+        
+        tk.Label(meta_frame, text="作者/機構:").grid(row=0, column=2, sticky="w")
+        tk.Entry(meta_frame, textvariable=self.input_doc_author, width=20).grid(row=0, column=3, padx=5, sticky="ew")
+        
+        tk.Label(meta_frame, text="原文連結 URL:").grid(row=1, column=0, sticky="w", pady=2)
+        tk.Entry(meta_frame, textvariable=self.input_source_url, width=55).grid(row=1, column=1, columnspan=3, padx=5, sticky="ew", pady=2)
+        meta_frame.grid_columnconfigure(1, weight=1)
+        meta_frame.grid_columnconfigure(3, weight=1)
+
+        tk.Label(self.new_generation_controls_frame, text="已存在的簡報檔案 (選填):").grid(row=3, column=0, sticky="w", pady=2)
+        tk.Entry(self.new_generation_controls_frame, textvariable=self.slides_file_path, width=80).grid(row=4, column=0, padx=(0, 5), columnspan=2, sticky="ew")
+        tk.Button(self.new_generation_controls_frame, text="瀏覽...", command=self.browse_slides_file).grid(row=4, column=2)
+        tk.Label(self.new_generation_controls_frame, text="客製化需求 (選填):").grid(row=5, column=0, sticky="w", pady=(10, 2))
         self.custom_instruction_text = tk.Text(self.new_generation_controls_frame, height=3, width=80, wrap=tk.WORD)
-        self.custom_instruction_text.grid(row=5, column=0, padx=(0,5), columnspan=3, sticky="ew")
+        self.custom_instruction_text.grid(row=6, column=0, padx=(0,5), columnspan=3, sticky="ew")
 
         # --- Gemini Model Selection ---
         model_selection_frame = tk.Frame(self.new_generation_controls_frame)
-        model_selection_frame.grid(row=6, column=0, columnspan=3, sticky="w", pady=5)
+        model_selection_frame.grid(row=7, column=0, columnspan=3, sticky="w", pady=5)
         tk.Label(model_selection_frame, text="選擇 Gemini 模型:").pack(side="left", padx=(0, 10))
         self.initial_gemini_model_var = tk.StringVar(value=self.available_gemini_models[0] if self.available_gemini_models else "")
         self.initial_model_combobox = ttk.Combobox(model_selection_frame, textvariable=self.initial_gemini_model_var, values=self.available_gemini_models, state="readonly", width=30)
@@ -672,21 +691,23 @@ class App(tk.Tk):
             source_url = self.source_url_var.get().strip()
             if source_url:
                 # Styled button HTML - Compact version
-                # Uses a smaller pill design, inline-flex to sit nicely with other elements
                 url_btn_html = f"""
                 <a href="{source_url}" target="_blank" style="display: inline-flex; align-items: center; gap: 4px; padding: 4px 10px; margin-top: 8px; background-color: var(--pill); color: var(--accent); text-decoration: none; border-radius: 12px; font-size: 12px; font-weight: 500; border: 1px solid var(--border); transition: all 0.2s;">
                     <span style="font-size: 14px;">🔗</span> 原文連結
                 </a>
                 """
-                # Inject it right after the </em> tag (Author info) to keep it compact
-                # If </em> exists, append it there. Otherwise fall back to previous method.
-                if '</em>' in content:
-                    content = content.replace('</em>', f'</em><br>{url_btn_html}', 1)
-                elif '</header>' in content:
-                    header_end_idx = content.find('</header>')
-                    container_end_idx = content.rfind('</div>', 0, header_end_idx)
-                    if container_end_idx != -1:
-                        content = content[:container_end_idx] + url_btn_html + content[container_end_idx:]
+                
+                # Check if button already exists to prevent duplication
+                if '🔗</span> 原文連結' not in content:
+                    # Inject it right after the </em> tag (Author info) to keep it compact
+                    # If </em> exists, append it there. Otherwise fall back to previous method.
+                    if '</em>' in content:
+                        content = content.replace('</em>', f'</em><br>{url_btn_html}', 1)
+                    elif '</header>' in content:
+                        header_end_idx = content.find('</header>')
+                        container_end_idx = content.rfind('</div>', 0, header_end_idx)
+                        if container_end_idx != -1:
+                            content = content[:container_end_idx] + url_btn_html + content[container_end_idx:]
             
             # --- YouTube Injection ---
             yt_id = self.youtube_id_var.get().strip()
@@ -969,6 +990,12 @@ class App(tk.Tk):
             source_file = self.source_file_path.get()
             slides_file = self.slides_file_path.get()
             custom_instruction = self.custom_instruction_text.get("1.0", tk.END).strip()
+            
+            # Manual metadata
+            m_title = self.input_doc_title.get().strip()
+            m_author = self.input_doc_author.get().strip()
+            m_url = self.input_source_url.get().strip()
+
             plan_reworks = self.plan_reworks_spinbox.get()
             slide_reworks = self.slide_reworks_spinbox.get()
             memo_reworks = self.memo_reworks_spinbox.get()
@@ -983,6 +1010,11 @@ class App(tk.Tk):
                 return
 
             command = [sys.executable, orchestrate_script, "--source", source_file]
+            
+            if m_title: command.extend(["--manual-title", m_title])
+            if m_author: command.extend(["--manual-author", m_author])
+            if m_url: command.extend(["--manual-url", m_url])
+
             if not self.generate_svg.get():
                 command.append("--no-svg")
             if custom_instruction: command.extend(["--custom-instruction", custom_instruction])

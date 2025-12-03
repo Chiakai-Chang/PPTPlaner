@@ -537,6 +537,10 @@ def main():
     MAX_ANALYSIS_REWORKS = 5
 
     analysis_vars = {"source_file_path": str(source_path)}
+    if args.manual_title: analysis_vars["manual_title"] = args.manual_title
+    if args.manual_author: analysis_vars["manual_author"] = args.manual_author
+    if args.manual_url: analysis_vars["manual_url"] = args.manual_url
+
     current_analysis_data = {}
 
     for attempt in range(MAX_ANALYSIS_REWORKS + 1):
@@ -558,6 +562,9 @@ def main():
             "analysis_data": json.dumps(current_analysis_data, ensure_ascii=False, indent=2),
             "source_file_path": str(source_path)
         }
+        if args.manual_title: validation_vars["manual_title"] = args.manual_title
+        if args.manual_author: validation_vars["manual_author"] = args.manual_author
+
         validation_json = run_agent(cfg["agent"], "VALIDATE_ANALYSIS", validation_vars, retries=2, model_name=cfg.get("gemini_model"))
         
         validation_result = {"is_valid": False, "is_acceptable": False, "feedback": "Validation agent returned no response."}
@@ -596,7 +603,7 @@ def main():
     
     if not final_analysis_data:
         print_error("Failed to generate any analysis content. Using placeholders.", exit_code=1)
-
+    
     rlog_data("Final Analysis Data Selected", final_analysis_data)
 
     # --- Create Output Directory and Save Overview ---
@@ -614,6 +621,7 @@ def main():
     doc_subtitle = final_analysis_data.get('document_subtitle')
     doc_authors = final_analysis_data.get('document_authors', 'N/A')
     pub_info = final_analysis_data.get('publication_info', 'N/A')
+    source_url = final_analysis_data.get('source_url', '')
     summary = final_analysis_data.get('summary', 'No summary was generated.')
     overview = final_analysis_data.get('overview', 'No overview was generated.')
     
@@ -623,6 +631,7 @@ def main():
         "document_subtitle": doc_subtitle,
         "document_authors": doc_authors,
         "publication_info": pub_info,
+        "source_url": source_url,
         "generation_date": run_datetime.strftime('%Y-%m-%d'),
         "generated_by": f"PPTPlaner {cfg.get('version', 'N/A')}",
         "source_file": source_path.name

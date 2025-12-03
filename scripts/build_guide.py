@@ -79,7 +79,20 @@ def main():
 
             authors = metadata.get("document_authors")
             pub_info = metadata.get("publication_info")
-            project_info["author_info_text"] = f"By {authors}, {pub_info}" if authors and pub_info and authors != 'N/A' and pub_info != 'N/A' else ""
+            source_url = metadata.get("source_url")
+
+            author_text = f"By {authors}, {pub_info}" if authors and pub_info and authors != 'N/A' and pub_info != 'N/A' else ""
+            
+            # Append Source URL button if available
+            if source_url:
+                url_btn_html = f"""<br>
+                <a href="{source_url}" target="_blank" style="display: inline-flex; align-items: center; gap: 4px; padding: 4px 10px; margin-top: 8px; background-color: var(--pill); color: var(--accent); text-decoration: none; border-radius: 12px; font-size: 12px; font-weight: 500; border: 1px solid var(--border); transition: all 0.2s;">
+                    <span style="font-size: 14px;">🔗</span> 原文連結
+                </a>
+                """
+                author_text += url_btn_html
+            
+            project_info["author_info_text"] = author_text
 
             overview_md = metadata.get("overview")
             if not overview_md:
