@@ -9,6 +9,8 @@ OUTPUT_ROOT = ROOT / "output"
 CONFIG_PATH = ROOT / "config.yaml"
 AGENTS_MD_PATH = ROOT / "AGENTS.md"
 ERROR_LOG_PATH = ROOT / "error.log"
+PAUSE_LOCK_PATH = ROOT / ".pause_lock"
+RUNTIME_CONFIG_PATH = ROOT / ".runtime_config.json"
 
 # --- Research Logger ---
 class ResearchLogger:
@@ -111,7 +113,46 @@ def run_command(cmd: list[str], input_text: str | None = None) -> subprocess.Com
         return subprocess.run(cmd, input=input_text, capture_output=True, text=True, encoding="utf-8", check=True)
     except FileNotFoundError: print_error(f"指令 '{cmd[0]}' 不存在。")
     except subprocess.CalledProcessError as e:
-        print_error(f"指令執行失敗 (Exit Code: {e.returncode}): {" ".join(e.cmd)}\n  STDOUT: {e.stdout.strip()}\n  STDERR: {e.stderr.strip()}")
+        # Rethrow to be handled by run_agent's retry/pause logic
+        raise e
+
+def wait_for_user_action() -> str | None:
+    """
+    Creates a pause lock file and waits for the user to remove it (via UI).
+    Checks for runtime config updates (e.g., model switch).
+    Returns the new model name if changed, else None.
+    """
+    try:
+        PAUSE_LOCK_PATH.touch()
+    except Exception as e:
+        print_error(f"Failed to create pause lock file: {e}", exit_code=None)
+        return None
+
+    print(f"  !! [PAUSE_REQUIRED] Execution paused due to error. Waiting for user action...", flush=True)
+    rlog("EXECUTION PAUSED: Waiting for user intervention...")
+
+    while PAUSE_LOCK_PATH.exists():
+        time.sleep(1)
+
+    print_info("Resuming execution...")
+    rlog("EXECUTION RESUMED")
+
+    # Check for runtime config update (e.g. model switch)
+    if RUNTIME_CONFIG_PATH.exists():
+        try:
+            config = json.loads(RUNTIME_CONFIG_PATH.read_text(encoding="utf-8"))
+            new_model = config.get("gemini_model")
+            if new_model:
+                print_info(f"Switched model to: {new_model}")
+                rlog(f"MODEL SWITCHED: {new_model}")
+                # Clean up config
+                RUNTIME_CONFIG_PATH.unlink() 
+                return new_model
+        except Exception as e:
+            print_error(f"Failed to read runtime config: {e}", exit_code=None)
+            RUNTIME_CONFIG_PATH.unlink(missing_ok=True)
+    
+    return None
 
 def run_agent(agent: str, mode: str, vars_map: dict, retries: int = 3, delay: int = 5, model_name: str | None = None) -> str:
     agent_cmd, found_agent_path = agent.lower().strip(), None
@@ -152,13 +193,15 @@ def run_agent(agent: str, mode: str, vars_map: dict, retries: int = 3, delay: in
     prompt_parts.append("Generate your response. Output ONLY the content required (e.g., pure JSON, pure Markdown). No conversational text.")
     final_prompt = "\n".join(prompt_parts)
 
-    cmd = [found_agent_path]
-    if model_name:
-        cmd.extend(["-m", model_name])
-    if mode in ["PLAN", "PLAN_FROM_SLIDES", "ANALYZE_SOURCE_DOCUMENT", "VALIDATE_ANALYSIS", "VALIDATE_MEMO", "DECK", "VALIDATE_DECK", "VALIDATE_SLIDE_SVG", "VALIDATE_CONCEPTUAL_SVG"]:
-        cmd.extend(["--output-format", "json"])
+    current_model_name = model_name
 
     for attempt in range(retries):
+        cmd = [found_agent_path]
+        if current_model_name:
+            cmd.extend(["-m", current_model_name])
+        if mode in ["PLAN", "PLAN_FROM_SLIDES", "ANALYZE_SOURCE_DOCUMENT", "VALIDATE_ANALYSIS", "VALIDATE_MEMO", "DECK", "VALIDATE_DECK", "VALIDATE_SLIDE_SVG", "VALIDATE_CONCEPTUAL_SVG"]:
+            cmd.extend(["--output-format", "json"])
+
         print_info(f"Calling {agent_cmd.capitalize()} for {mode}... (Attempt {attempt + 1}/{retries})")
         
         # --- LOGGING AGENT CALL ---
@@ -185,14 +228,35 @@ def run_agent(agent: str, mode: str, vars_map: dict, retries: int = 3, delay: in
             # This case handles when the command itself fails (e.g., API error)
             stderr_lower = e.stderr.lower()
             rlog(f"AGENT ERROR: {e.stderr.strip()}")
-            if "authentication" in stderr_lower or "login required" in stderr_lower:
+            
+            # Detect error types
+            is_auth_error = "authentication" in stderr_lower or "login required" in stderr_lower
+            is_quota_error = "exhausted" in stderr_lower or "quota" in stderr_lower
+            # Also treat generic code 1 with specific messages as suspicious if needed, 
+            # but usually exit code 1 is generic. 
+            # We want to pause on ANY error that causes failure, to give user a chance to fix.
+            
+            error_msg = f"指令執行失敗 (Exit Code: {e.returncode}): {" ".join(e.cmd)}\n  STDERR: {e.stderr.strip()}"
+
+            if is_auth_error:
                 print_error("認證失敗或過期 (Authentication failed or expired)。", exit_code=None)
                 print_info("請在瀏覽器中完成登入，或在另一個終端機中執行 `gemini auth login`。")
-            elif "exhausted" in stderr_lower or "quota" in stderr_lower:
+            elif is_quota_error:
                 print_error("API quota 已用盡 (API quota exhausted)。", exit_code=None)
-                print_info("請在 GUI 中選擇 '繼續' 來等待配額恢復，或選擇 '切換模型' 來嘗試其他模型。")
+                print_info("請等待配額恢復，或切換模型。")
             else:
-                print_error(f"指令執行失敗 (Exit Code: {e.returncode}): {" ".join(e.cmd)}\n  STDERR: {e.stderr.strip()}", exit_code=None)
+                print_error(error_msg, exit_code=None)
+
+            # Trigger Pause/Resume Mechanism
+            # We pause here to let the user fix the issue (Auth, Quota, or Model Switch)
+            # instead of just burning through retries.
+            new_model = wait_for_user_action()
+            if new_model:
+                current_model_name = new_model
+                print_info(f"Retrying with new model: {current_model_name}")
+                # Don't increment attempt? Or should we?
+                # If we switched models, maybe we should reset attempts or just continue?
+                # For now, we continue, but since we paused, the user hopefully fixed it.
 
         if attempt < retries - 1:
             print_info(f"Retrying in {delay}s...")

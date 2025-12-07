@@ -11,7 +11,7 @@ import mimetypes
 
 import requests
 
-version = "v3.0.1"
+version = "v3.1"
 
 class App(tk.Tk):
     def __init__(self, available_models):
@@ -930,11 +930,84 @@ class App(tk.Tk):
         dialog.destroy()
         self.quota_event.set() # Allow the background thread to continue
 
+    def _show_pause_dialog(self):
+        # Log to console
+        self.log_message("\n====================\n")
+        self.log_message("[PAUSE_REQUIRED] 核心程序已暫停，等待使用者操作。\n")
+        self.log_message("====================\n")
+
+        # Create a Toplevel window for the dialog
+        dialog = tk.Toplevel(self)
+        dialog.title("程序已暫停 (需要操作)")
+        dialog.transient(self)
+        dialog.grab_set()
+
+        message = (
+            "檢測到核心程序已暫停 (可能是由於 API 錯誤或其他異常)。\n"
+            "您可以選擇嘗試繼續，或切換模型後再繼續。\n"
+        )
+        tk.Label(dialog, text=message, padx=20, pady=10, justify=tk.LEFT).pack()
+
+        # Model selection dropdown
+        model_frame = tk.Frame(dialog)
+        model_frame.pack(pady=5)
+        tk.Label(model_frame, text="選擇 Gemini 模型:").pack(side=tk.LEFT, padx=5)
+        
+        self.selected_gemini_model_var = tk.StringVar(value=self.current_gemini_model if self.current_gemini_model else self.available_gemini_models[0])
+        self.model_combobox = ttk.Combobox(model_frame, textvariable=self.selected_gemini_model_var, values=self.available_gemini_models, state="readonly")
+        self.model_combobox.pack(side=tk.LEFT, padx=5)
+
+        # Actions
+        def on_resume(switch_model=False):
+            if switch_model:
+                new_model = self.selected_gemini_model_var.get()
+                self.current_gemini_model = new_model
+                self.log_message(f"已設定新模型: {new_model}\n")
+                # Write to .runtime_config.json
+                try:
+                    with open(".runtime_config.json", "w", encoding="utf-8") as f:
+                        json.dump({"gemini_model": new_model}, f)
+                except Exception as e:
+                    self.log_message(f"錯誤: 無法寫入運行時配置: {e}\n")
+
+            # Remove .pause_lock to signal orchestrate.py to resume
+            if os.path.exists(".pause_lock"):
+                try:
+                    os.remove(".pause_lock")
+                    self.log_message("已解除暫停鎖定，程序繼續執行...\n")
+                except Exception as e:
+                    self.log_message(f"錯誤: 無法移除暫停鎖定檔: {e}\n")
+            
+            dialog.destroy()
+            self.quota_event.set()
+
+        # Continue button
+        tk.Button(dialog, text="繼續 (使用當前模型)", command=lambda: on_resume(False)).pack(pady=(10, 5))
+
+        # Switch Model button
+        tk.Button(dialog, text="切換模型並繼續", command=lambda: on_resume(True)).pack(pady=(0, 10))
+
+        # Center dialog
+        self.update_idletasks()
+        x = self.winfo_x() + (self.winfo_width() // 2) - (dialog.winfo_width() // 2)
+        y = self.winfo_y() + (self.winfo_height() // 2) - (dialog.winfo_height() // 2)
+        dialog.geometry(f"+{x}+{y}")
+        
+        self.wait_window(dialog)
+
     def run_in_thread(self, command):
         # Always set the event before starting a new execution block to ensure it's unblocked initially
         self.quota_event.set()
         quota_reset_time_str = None # Initialize outside loop
         
+        # Ensure stale lock files are removed before starting
+        if os.path.exists(".pause_lock"):
+             try: os.remove(".pause_lock")
+             except: pass
+        if os.path.exists(".runtime_config.json"):
+             try: os.remove(".runtime_config.json")
+             except: pass
+
         with subprocess.Popen(command, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True, encoding='utf-8', errors='replace', bufsize=1, universal_newlines=True) as process:
             for line in iter(process.stdout.readline, ''):
                 print(line, end='')
@@ -951,7 +1024,12 @@ class App(tk.Tk):
                     ("API Error" in line and "429" in line)
                 )
                 
-                if is_quota:
+                if "[PAUSE_REQUIRED]" in line:
+                    self.quota_event.clear()
+                    self.after(0, self._show_pause_dialog)
+                    self.quota_event.wait()
+
+                elif is_quota:
                     self.quota_event.clear() # Block the thread
                     self.after(0, lambda: self._show_quota_dialog(quota_reset_time_str))
                     self.quota_event.wait() # Wait for the user to click 'Continue' in the dialog
