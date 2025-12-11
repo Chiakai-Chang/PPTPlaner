@@ -7,7 +7,7 @@ from datetime import datetime
 ROOT = Path(__file__).resolve().parents[1]
 OUTPUT_ROOT = ROOT / "output"
 CONFIG_PATH = ROOT / "config.yaml"
-AGENTS_MD_PATH = ROOT / "AGENTS.md"
+PROMPTS_DIR = ROOT / "scripts" / "prompts"
 ERROR_LOG_PATH = ROOT / "error.log"
 PAUSE_LOCK_PATH = ROOT / ".pause_lock"
 RUNTIME_CONFIG_PATH = ROOT / ".runtime_config.json"
@@ -98,13 +98,25 @@ _agent_specs_cache = None
 def parse_agent_specs():
     global _agent_specs_cache
     if _agent_specs_cache: return _agent_specs_cache
-    if not AGENTS_MD_PATH.exists(): print_error(f"規格檔案不存在: {AGENTS_MD_PATH}")
+    
+    if not PROMPTS_DIR.exists():
+        print_error(f"Prompts directory not found: {PROMPTS_DIR}")
+        
     specs = {}
-    content = AGENTS_MD_PATH.read_text(encoding="utf-8")
-    parts = re.split(r'\n##\s*\[(.*?)\]', content)
-    if len(parts) > 1:
-        for i in range(1, len(parts), 2):
-            specs[parts[i]] = parts[i+1].strip()
+    # Iterate over all .md files in the prompts directory
+    for prompt_file in PROMPTS_DIR.glob("*.md"):
+        if prompt_file.name.lower() == "readme.md": continue # Skip README
+        
+        mode_name = prompt_file.stem # Filename without extension serves as the key
+        try:
+            content = prompt_file.read_text(encoding="utf-8").strip()
+            specs[mode_name] = content
+        except Exception as e:
+            print_error(f"Failed to read prompt file {prompt_file.name}: {e}", exit_code=None)
+
+    if not specs:
+        print_error(f"No agent prompts found in {PROMPTS_DIR}")
+
     _agent_specs_cache = specs
     return specs
 
@@ -167,17 +179,27 @@ def run_agent(agent: str, mode: str, vars_map: dict, retries: int = 3, delay: in
     instructions = parse_agent_specs().get(mode)
     if not instructions: print_error(f"在 AGENTS.md 中找不到模式 '{mode}'。")
 
-    safety_preamble = ("You are an AI assistant in an academic context. Your purpose is to help a user create educational materials from a textbook. "
-                         "The textbook may contain sensitive topics (such as crime, violence, or other serious subjects) for the purpose of scholarly analysis. "
-                         "Your task is to process these topics factually and neutrally, as presented in the source material. "
-                         "Do not avoid sensitive subjects; handle them with an objective, academic tone suitable for a learning environment.")
+    # Load Safety Preamble
+    safety_preamble_path = PROMPTS_DIR / "_SAFETY_PREAMBLE.md"
+    if safety_preamble_path.exists():
+        safety_preamble = safety_preamble_path.read_text(encoding="utf-8").strip()
+    else:
+        # Fallback if file is missing (though it should be there)
+        safety_preamble = "You are an AI assistant. Please process the content objectively."
 
     prompt_parts = [safety_preamble, f"Your specific task is '{mode}'.", "--- INSTRUCTIONS ---", instructions, "--- CONTEXT & INPUTS ---"]
     
     # Prepare log for inputs
     log_inputs = {}
 
+    # Extract rework_feedback to handle it separately/prominently
+    rework_feedback = vars_map.get("rework_feedback")
+
     for key, value in vars_map.items():
+        if key == "rework_feedback":
+            log_inputs[key] = value
+            continue # Skip adding to prompt here, we add it later
+
         if key.endswith("_path") and value and os.path.exists(value):
             file_content = Path(value).read_text(encoding='utf-8')
             prompt_parts.append(f"Content for '{os.path.basename(value)}':\n```\n{file_content}\n```")
@@ -189,6 +211,13 @@ def run_agent(agent: str, mode: str, vars_map: dict, retries: int = 3, delay: in
             prompt_parts.append(f"- {key}: {value}")
             log_inputs[key] = value
     
+    # Add rework_feedback prominently if it exists
+    if rework_feedback:
+        prompt_parts.append("\n" + "="*40)
+        prompt_parts.append("!!! CRITICAL FEEDBACK FROM PREVIOUS ATTEMPT !!!")
+        prompt_parts.append(f"Your previous generation was rejected. You MUST address the following feedback in this new attempt:\n\n{rework_feedback}")
+        prompt_parts.append("="*40 + "\n")
+
     prompt_parts.append("--- YOUR TASK ---")
     prompt_parts.append("Generate your response. Output ONLY the content required (e.g., pure JSON, pure Markdown). No conversational text.")
     final_prompt = "\n".join(prompt_parts)
