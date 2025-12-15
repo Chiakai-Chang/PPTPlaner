@@ -1,4 +1,8 @@
 @echo off
+
+REM Set Python to use UTF-8 mode, which is more reliable than chcp
+set PYTHONUTF8=1
+
 REM Set code page to UTF-8 to prevent encoding issues.
 chcp 65001 > nul
 
