@@ -11,7 +11,7 @@ import mimetypes
 
 import requests
 
-version = "v3.2"
+version = "v3.3"
 
 class App(tk.Tk):
     def __init__(self, available_models):
@@ -193,8 +193,13 @@ class App(tk.Tk):
         
         tk.Label(rework_frame, text="備忘稿:").pack(side="left", padx=(0, 5))
         self.memo_reworks_spinbox = tk.Spinbox(rework_frame, from_=0, to=10, width=5, justify="center")
-        self.memo_reworks_spinbox.pack(side="left")
+        self.memo_reworks_spinbox.pack(side="left", padx=(0, 15))
         self.memo_reworks_spinbox.delete(0, "end"); self.memo_reworks_spinbox.insert(0, "5")
+
+        tk.Label(rework_frame, text="執行:").pack(side="left", padx=(0, 5))
+        self.exec_reworks_spinbox = tk.Spinbox(rework_frame, from_=0, to=10, width=5, justify="center")
+        self.exec_reworks_spinbox.pack(side="left")
+        self.exec_reworks_spinbox.delete(0, "end"); self.exec_reworks_spinbox.insert(0, "3")
 
         # --- SVG Generation Checkbox ---
         options_frame = tk.Frame(self.new_generation_controls_frame)
@@ -1077,6 +1082,7 @@ class App(tk.Tk):
             plan_reworks = self.plan_reworks_spinbox.get()
             slide_reworks = self.slide_reworks_spinbox.get()
             memo_reworks = self.memo_reworks_spinbox.get()
+            exec_reworks = self.exec_reworks_spinbox.get()
 
             if not source_file:
                 self.log_message("錯誤：請務必選擇原文書檔案。\n")
@@ -1115,6 +1121,11 @@ class App(tk.Tk):
                 if int(memo_reworks) >= 0: command.extend(["--memo-reworks", memo_reworks])
             except ValueError:
                 self.log_message("警告：備忘稿修正次數不是有效的數字，將使用預設值。\n")
+
+            try:
+                if int(exec_reworks) >= 0: command.extend(["--agent-retries", exec_reworks])
+            except ValueError:
+                self.log_message("警告：執行重試次數不是有效的數字，將使用預設值。\n")
 
         elif selected_mode == "resume":
             resume_output_dir = self.resume_output_dir_path.get()

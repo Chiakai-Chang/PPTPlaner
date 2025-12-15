@@ -59,3 +59,8 @@ tone: "academic-friendly"          # academic / formal / narrative / teaching
 slide_max_reworks: 5  # 整份簡報的修正次數
 memo_max_reworks: 5   # 每頁備忘稿的修正次數
 plan_max_reworks: 3   # 規劃階段的修正次數
+
+# ⚡ AI 執行層級重試 (Execution Retries)
+# 當 AI 指令因為網絡、配額或未預期錯誤而失敗時，嘗試重試的次數。
+# 即使設定為 1，當發生錯誤時，系統仍會暫停並允許使用者手動重試（無限次）。
+agent_execution_retries: 3
