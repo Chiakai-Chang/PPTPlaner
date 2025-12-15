@@ -71,16 +71,6 @@
 
 ## ⚙️ 系統需求 (System Requirements)
 
-### 懶人福音：Windows 環境一鍵安裝
-
-為了讓 Windows 使用者免於繁瑣的環境設定，作者特別開發了一款「[一鍵自動安裝腳本](https://github.com/Chiakai-Chang/Gemini-CLI-Windows-Auto-Installer)」。
-
-**強烈建議 Windows 使用者使用此腳本**，它會為您自動處理好 `Python`, `Node.js`, 以及 `Gemini CLI` 的所有安裝與設定。您只需：
-1.  前往 [Gemini CLI Windows Auto-Installer](https://github.com/Chiakai-Chang/Gemini-CLI-Windows-Auto-Installer) 專案頁面。
-2.  依照其 `README.md` 檔案中的「如何使用」說明，下載並以系統管理員身分執行 `install.bat` 即可。
-
----
-
 ### 手動安裝 (適用於非 Windows 或進階使用者)
 
 如果您不是 Windows 使用者，或偏好手動設定環境，請依循以下步驟：
