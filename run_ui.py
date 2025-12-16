@@ -10,14 +10,26 @@ import base64
 import mimetypes
 
 import requests
+import yaml
 
-version = "v3.3"
+# version = "v3.3" # Removed hardcoded version
 
 class App(tk.Tk):
     def __init__(self, available_models):
         super().__init__()
         self.available_gemini_models = available_models
-        self.title(f"PPTPlaner {version}")
+        
+        # Load version from config.yaml
+        config_path = Path(__file__).resolve().parents[0] / "config.yaml"
+        cfg = {}
+        if config_path.exists():
+            try:
+                cfg = yaml.safe_load(config_path.read_text(encoding="utf-8"))
+            except Exception as e:
+                print(f"Error loading config.yaml for version: {e}")
+        self.version = cfg.get("version", "Unknown") # Default to Unknown if not found
+        
+        self.title(f"PPTPlaner {self.version}")
         # Set window size and position
         screen_height = self.winfo_screenheight()
         window_height = int(screen_height * 0.8) # Increased height for the new list view
