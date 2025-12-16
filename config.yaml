@@ -61,7 +61,7 @@ memo_max_reworks: 5   # 每頁備忘稿的修正次數
 plan_max_reworks: 3   # 規劃階段的修正次數
 
 # ⚙️ 專案版本
-version: 1.6.0 # 專案版本號
+version: 3.3.1 # 專案版本號
 
 # ⚡ AI 執行層級重試 (Execution Retries)
 # 當 AI 指令因為網絡、配額或未預期錯誤而失敗時，嘗試重試的次數。
