@@ -672,28 +672,70 @@ def main():
     # --- Phase 1: Analysis & Setup ---
     print_header("Phase 1: Analysis & Planning")
     
-    project_title = args.manual_title
-    project_author = args.manual_author
-    source_url = args.manual_url
-    summary = "No summary available."
+    print_info("Analyzing source document and integrating metadata...")
     
-    # If title not provided, ask AI to analyze
-    if not project_title:
-        print_info("Analyzing source document...")
-        analysis_vars = {
-            "source_file_path": str(source_path),
-            "custom_instruction": args.custom_instruction or ""
-        }
-        analysis_json = run_agent(cfg["agent"], "ANALYZE_SOURCE_DOCUMENT", analysis_vars, retries=cfg["agent_execution_retries"], model_name=cfg.get("gemini_model"))
-        analysis_data = parse_ai_json_output(analysis_json, "ANALYZE_SOURCE_DOCUMENT")
+    # Always run analysis to get summary, overview, and validate manual inputs
+    analysis_vars = {
+        "source_file_path": str(source_path),
+        "custom_instruction": args.custom_instruction or "",
+        "manual_title": args.manual_title or "",
+        "manual_author": args.manual_author or "",
+        "manual_url": args.manual_url or ""
+    }
+    
+    analysis_data = None
+    ANALYSIS_REWORKS = 3
+    feedback_history = []
+    
+    for attempt in range(ANALYSIS_REWORKS + 1):
+        if attempt > 0: print_info(f"Reworking Analysis... (Attempt {attempt}/{ANALYSIS_REWORKS})")
         
-        if analysis_data:
-            project_title = analysis_data.get("project_title") or analysis_data.get("document_title") or "Untitled_Project"
-            project_author = analysis_data.get("document_authors") or "Unknown Author"
-            summary = analysis_data.get("summary") or ""
-        else:
-            print_error("Failed to analyze source document. Using default title.")
-            project_title = "Untitled_Project"
+        analysis_json = run_agent(cfg["agent"], "ANALYZE_SOURCE_DOCUMENT", analysis_vars, retries=cfg["agent_execution_retries"], model_name=cfg.get("gemini_model"))
+        current_data = parse_ai_json_output(analysis_json, "ANALYZE_SOURCE_DOCUMENT")
+        
+        if not current_data:
+            print_error(f"Analysis generation failed on attempt {attempt}.", exit_code=None)
+            continue
+            
+        analysis_data = current_data # Keep the last successful generation
+        
+        # Validate
+        val_vars = {
+            "analysis_data": json.dumps(current_data, ensure_ascii=False),
+            "source_file_path": str(source_path),
+            "manual_title": args.manual_title or "",
+            "manual_author": args.manual_author or ""
+        }
+        val_json = run_agent(cfg["agent"], "VALIDATE_ANALYSIS", val_vars, retries=cfg["agent_execution_retries"], model_name=cfg.get("gemini_model"))
+        val_res = parse_ai_json_output(val_json, "VALIDATE_ANALYSIS")
+        
+        if val_res and val_res.get("is_valid"):
+            print_success("Analysis validation passed (Perfect).")
+            break
+        elif val_res and val_res.get("is_acceptable"):
+            print_success("Analysis validation passed (Acceptable).")
+            break
+            
+        feedback = val_res.get("feedback", "No feedback") if val_res else "Invalid response"
+        print_info(f"Analysis validation feedback: {feedback}")
+        
+        feedback_history.append(f"Attempt {attempt+1} Feedback: {feedback}")
+        analysis_vars["rework_feedback"] = "\n\n".join(feedback_history)
+    
+    if analysis_data:
+        # AI returns the final decision on these fields (integrating manual input)
+        project_title = analysis_data.get("project_title") or analysis_data.get("document_title") or args.manual_title or "Untitled_Project"
+        project_author = analysis_data.get("document_authors") or args.manual_author or "Unknown Author"
+        source_url = analysis_data.get("source_url") or args.manual_url or ""
+        summary = analysis_data.get("summary") or "No summary available."
+        overview_text = analysis_data.get("overview") or ""
+    else:
+        print_error("Analysis failed. Falling back to manual/default values.")
+        project_title = args.manual_title or "Untitled_Project"
+        project_author = args.manual_author or "Unknown Author"
+        source_url = args.manual_url or ""
+        summary = "No summary available."
+        overview_text = ""
 
     # Sanitize title for folder name
     safe_title = sanitize_filename(project_title)[:50]
@@ -708,28 +750,42 @@ def main():
     print_success(f"Output directory created: {output_dir}")
 
     # Save Overview
-    overview_content = f"# {project_title}\n\n**Author:** {project_author}\n\n**Source:** {source_url}\n\n## Summary\n{summary}\n"
+    overview_content = f"# {project_title}\n\n**Author:** {project_author}\n\n**Source:** {source_url}\n\n## Summary\n{summary}\n\n## Overview\n{overview_text}\n"
     (output_dir / "overview.md").write_text(overview_content, encoding="utf-8")
 
     # --- Phase 2: Planning ---
     print_info("Generating Presentation Plan...")
     plan_data = None
     
+    plan_mode = "PLAN_FROM_SLIDES" if args.plan_from_slides else "PLAN"
+    plan_vars = {}
     if args.plan_from_slides:
         print_info(f"Deriving plan from existing slides: {args.plan_from_slides}")
-        plan_vars = {"slides_file_path": args.plan_from_slides}
-        plan_json = run_agent(cfg["agent"], "PLAN_FROM_SLIDES", plan_vars, retries=cfg["agent_execution_retries"], model_name=cfg.get("gemini_model"))
-        plan_data = parse_ai_json_output(plan_json, "PLAN_FROM_SLIDES")
+        plan_vars["slides_file_path"] = args.plan_from_slides
     else:
-        plan_vars = {
-            "source_file_path": str(source_path),
-            "custom_instruction": args.custom_instruction or ""
-        }
-        plan_json = run_agent(cfg["agent"], "PLAN", plan_vars, retries=cfg["agent_execution_retries"], model_name=cfg.get("gemini_model"))
-        plan_data = parse_ai_json_output(plan_json, "PLAN")
+        plan_vars["source_file_path"] = str(source_path)
+        plan_vars["custom_instruction"] = args.custom_instruction or ""
+
+    feedback_history = []
+    for attempt in range(args.plan_reworks + 1):
+        if attempt > 0: print_info(f"Reworking Plan... (Attempt {attempt}/{args.plan_reworks})")
+        
+        plan_json = run_agent(cfg["agent"], plan_mode, plan_vars, retries=cfg["agent_execution_retries"], model_name=cfg.get("gemini_model"))
+        plan_data = parse_ai_json_output(plan_json, plan_mode)
+        
+        if plan_data and "pages" in plan_data and isinstance(plan_data["pages"], list) and len(plan_data["pages"]) > 0:
+            print_success("Plan generated successfully.")
+            break
+        
+        feedback = "The previous output was invalid. Please ensure you output a valid JSON object with a 'pages' key containing a list of page objects."
+        print_error(f"Plan validation failed on attempt {attempt}: Missing 'pages' list or invalid JSON.", exit_code=None)
+        
+        feedback_history.append(f"Attempt {attempt+1} Feedback: {feedback}")
+        plan_vars["rework_feedback"] = "\n\n".join(feedback_history)
 
     if not plan_data or "pages" not in plan_data:
-        print_error("Failed to generate a valid plan.")
+        print_error("Failed to generate a valid plan after all retries.")
+        sys.exit(1)
 
     (output_dir / ".plan.json").write_text(json.dumps(plan_data, indent=2, ensure_ascii=False), encoding="utf-8")
     pages_plan = plan_data["pages"]
@@ -750,6 +806,7 @@ def main():
     
     perfect_deck = False
     last_deck_content = ""
+    feedback_history = []
     
     for attempt in range(args.slide_reworks + 1):
         if attempt > 0: print_info(f"Reworking Deck... (Attempt {attempt}/{args.slide_reworks})")
@@ -787,7 +844,9 @@ def main():
         
         feedback = val_res.get("feedback", "No feedback") if val_res else "Invalid response"
         print_info(f"Deck validation feedback: {feedback}")
-        deck_vars["rework_feedback"] = feedback
+        
+        feedback_history.append(f"Attempt {attempt+1} Feedback: {feedback}")
+        deck_vars["rework_feedback"] = "\n\n".join(feedback_history)
 
     # Save Slides
     if not last_deck_content:
@@ -823,6 +882,7 @@ def main():
         }
         
         final_memo = ""
+        feedback_history = []
         
         for attempt in range(args.memo_reworks + 1):
             if attempt > 0: print_info(f"  Reworking Memo {p_num}... (Attempt {attempt}/{args.memo_reworks})")
@@ -847,7 +907,10 @@ def main():
                 break # Accept acceptable
                 
             feedback = val_res.get("feedback", "") if val_res else ""
-            memo_vars["rework_feedback"] = feedback
+            if feedback: print_info(f"  [QA Feedback]: {feedback}")
+            
+            feedback_history.append(f"Attempt {attempt+1} Feedback: {feedback}")
+            memo_vars["rework_feedback"] = "\n\n".join(feedback_history)
         
         if not final_memo: final_memo = current_memo # Fallback
         
@@ -856,36 +919,99 @@ def main():
     # --- Phase 5: SVG Generation ---
     if not args.no_svg:
         print_header("Phase 5: SVG Generation")
-        # Reuse the logic from resume_svg_generation.py but inline or call it?
-        # Since we are in orchestrate, we can just call the agents.
         
         for i, slide in enumerate(last_deck_content):
             p_num = str(slide.get("page")).zfill(2)
             print_info(f"Generating SVGs for Page {p_num}...")
             
             slide_content = slide.get("content", "")
+            memo_content = ""
+            memo_file = notes_dir / f"note-{p_num}_{sanitize_filename(slide.get('topic', 'Topic'))}-zh.md"
+            if memo_file.exists():
+                memo_content = memo_file.read_text(encoding="utf-8")
             
-            # 1. Slide SVG
+            # --- 1. Slide SVG ---
             svg_vars = {"slide_content": slide_content}
-            # ... loop for slide svg ...
-            # For brevity in this fix, I'll do a simple 1-pass or reuse logic if I had time.
-            # But the prompt said "full implemented". I'll add a simple loop.
-            
             final_slide_svg = ""
+            feedback_history = []
+            
             for attempt in range(args.slide_svg_reworks + 1):
-                 raw = run_agent(cfg["agent"], "CREATE_SLIDE_SVG", svg_vars, retries=1, model_name=cfg.get("gemini_model"))
-                 svg_match = re.search(r"<svg.*?</svg>", raw, re.DOTALL)
-                 if svg_match:
-                     final_slide_svg = svg_match.group(0)
-                     break # Skip validation for now to save tokens/time in this repair, or add if strict.
+                if attempt > 0: print_info(f"  Reworking Slide SVG... (Attempt {attempt}/{args.slide_svg_reworks})")
+                
+                raw = run_agent(cfg["agent"], "CREATE_SLIDE_SVG", svg_vars, retries=cfg["agent_execution_retries"], model_name=cfg.get("gemini_model"))
+                
+                # Extract SVG
+                current_svg = raw
+                svg_match = re.search(r"<svg.*?</svg>", raw, re.DOTALL)
+                if svg_match: current_svg = svg_match.group(0)
+                
+                if not current_svg or "<svg" not in current_svg:
+                    print_info("  No valid SVG found in response.")
+                    continue
+
+                # Validate
+                val_vars = {"svg_code": current_svg}
+                val_json = run_agent(cfg["agent"], "VALIDATE_SLIDE_SVG", val_vars, retries=cfg["agent_execution_retries"], model_name=cfg.get("gemini_model"))
+                val_res = parse_ai_json_output(val_json, "VALIDATE_SLIDE_SVG")
+                
+                if val_res and val_res.get("is_valid"):
+                    final_slide_svg = current_svg
+                    break
+                elif val_res and val_res.get("is_acceptable"):
+                    final_slide_svg = current_svg
+                    break
+                
+                feedback = val_res.get("feedback", "") if val_res else ""
+                if feedback: print_info(f"  [QA Feedback]: {feedback}")
+                
+                feedback_history.append(f"Attempt {attempt+1} Feedback: {feedback}")
+                svg_vars["rework_feedback"] = "\n\n".join(feedback_history)
             
             if final_slide_svg:
                 (slides_dir / f"slide_{p_num}.svg").write_text(final_slide_svg, encoding="utf-8")
 
-            # 2. Conceptual SVG
-            # ... similar logic ...
-            # (Omitting full Conceptual SVG loop to keep file size manageable, 
-            #  but essentially it mirrors the above with CREATE_CONCEPTUAL_SVG)
+            # --- 2. Conceptual SVG ---
+            con_vars = {"slide_content": slide_content, "memo_content": memo_content}
+            final_con_svg = ""
+            feedback_history = []
+            
+            for attempt in range(args.conceptual_svg_reworks + 1):
+                if attempt > 0: print_info(f"  Reworking Conceptual SVG... (Attempt {attempt}/{args.conceptual_svg_reworks})")
+                
+                raw = run_agent(cfg["agent"], "CREATE_CONCEPTUAL_SVG", con_vars, retries=cfg["agent_execution_retries"], model_name=cfg.get("gemini_model"))
+                
+                if "NO_CONCEPTUAL_SVG_NEEDED" in raw:
+                    print_info("  Agent decided no conceptual SVG is needed.")
+                    break
+                
+                # Extract SVG
+                current_svg = raw
+                svg_match = re.search(r"<svg.*?</svg>", raw, re.DOTALL)
+                if svg_match: current_svg = svg_match.group(0)
+                
+                if not current_svg or "<svg" not in current_svg:
+                    continue
+
+                # Validate
+                val_vars = {"svg_code": current_svg, "slide_content": slide_content, "memo_content": memo_content}
+                val_json = run_agent(cfg["agent"], "VALIDATE_CONCEPTUAL_SVG", val_vars, retries=cfg["agent_execution_retries"], model_name=cfg.get("gemini_model"))
+                val_res = parse_ai_json_output(val_json, "VALIDATE_CONCEPTUAL_SVG")
+                
+                if val_res and val_res.get("is_valid"):
+                    final_con_svg = current_svg
+                    break
+                elif val_res and val_res.get("is_acceptable"):
+                    final_con_svg = current_svg
+                    break
+                
+                feedback = val_res.get("feedback", "") if val_res else ""
+                if feedback: print_info(f"  [QA Feedback]: {feedback}")
+                
+                feedback_history.append(f"Attempt {attempt+1} Feedback: {feedback}")
+                con_vars["rework_feedback"] = "\n\n".join(feedback_history)
+
+            if final_con_svg:
+                (slides_dir / f"conceptual_{p_num}.svg").write_text(final_con_svg, encoding="utf-8")
 
     # --- Phase 6: Build Guide ---
     print_header("Phase 6: Finalizing Output")
