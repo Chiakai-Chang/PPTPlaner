@@ -59,32 +59,36 @@ def main():
         
         if overview_path.exists():
             overview_content = overview_path.read_text(encoding="utf-8")
-            metadata = {}
-            body_content = overview_content
+            
+            # 1. Parse Title (First H1)
+            title_match = re.search(r"^#\s+(.+)$", overview_content, re.MULTILINE)
+            if title_match:
+                project_info["title"] = title_match.group(1).strip()
 
-            if YAML_AVAILABLE and overview_content.startswith('---'):
-                try:
-                    _, front_matter_str, body_content = overview_content.split('---', 2)
-                    metadata = yaml.safe_load(front_matter_str)
-                except (ValueError, yaml.YAMLError) as e:
-                    print(f"[Warning] Could not parse YAML front matter from overview.md: {e}", flush=True)
+            # 2. Parse Author
+            author_match = re.search(r"\*\*Author:\*\*\s*(.+)$", overview_content, re.MULTILINE)
+            authors = author_match.group(1).strip() if author_match else None
 
-            project_info["title"] = metadata.get("document_title", project_info["title"])
-            summary = metadata.get("summary")
-            if not summary:
-                summary_match = re.search(r"##\s摘要\s\(Summary\)\n\n(.*?)(?=\n\n##|\Z)", body_content, re.DOTALL)
-                if summary_match:
-                    summary = summary_match.group(1).strip()
-            project_info["summary"] = summary or "This guide displays the generated slides and notes side-by-side."
+            # 3. Parse Source URL
+            source_match = re.search(r"\*\*Source:\*\*\s*(.+)$", overview_content, re.MULTILINE)
+            source_url = source_match.group(1).strip() if source_match else None
+            
+            # 4. Parse Summary (Flexible Header)
+            summary_match = re.search(r"##\s+(?:Summary|摘要).*?\n\n(.*?)(?=\n\n##|\Z)", overview_content, re.DOTALL | re.IGNORECASE)
+            if summary_match:
+                project_info["summary"] = summary_match.group(1).strip()
 
-            authors = metadata.get("document_authors")
-            pub_info = metadata.get("publication_info")
-            source_url = metadata.get("source_url")
+            # 5. Parse Overview (Flexible Header)
+            overview_match = re.search(r"##\s+(?:Overview|總覽).*?\n\n(.*?)(?=\n\n##|\Z)", overview_content, re.DOTALL | re.IGNORECASE)
+            if overview_match:
+                overview_md = overview_match.group(1).strip()
+                project_info["overview_html"] = md.render(overview_md)
 
-            author_text = f"By {authors}, {pub_info}" if authors and pub_info and authors != 'N/A' and pub_info != 'N/A' else ""
+            # Construct Author Text
+            author_text = f"By {authors}" if authors and authors != 'N/A' else ""
             
             # Append Source URL button if available
-            if source_url:
+            if source_url and source_url.lower() != 'none' and source_url != '':
                 url_btn_html = f"""<br>
                 <a href="{source_url}" target="_blank" style="display: inline-flex; align-items: center; gap: 4px; padding: 4px 10px; margin-top: 8px; background-color: var(--pill); color: var(--accent); text-decoration: none; border-radius: 12px; font-size: 12px; font-weight: 500; border: 1px solid var(--border); transition: all 0.2s;">
                     <span style="font-size: 14px;">🔗</span> 原文連結
@@ -93,13 +97,6 @@ def main():
                 author_text += url_btn_html
             
             project_info["author_info_text"] = author_text
-
-            overview_md = metadata.get("overview")
-            if not overview_md:
-                overview_match = re.search(r"##\s總覽\s\(Overview\)\n\n(.*?)(?=\n\n##|\Z)", body_content, re.DOTALL)
-                if overview_match:
-                    overview_md = overview_match.group(1).strip()
-            project_info["overview_html"] = md.render(overview_md) if overview_md else ""
 
         if not slides_dir.exists():
             print(f"Build skipped: '{slides_dir.name}' directory not found in {output_dir}.", flush=True)
@@ -140,6 +137,14 @@ def main():
                 slide_content_html = md.render(slide_content_raw)
 
                 raw_note_content = note_path.read_text(encoding="utf-8") if note_path.exists() else "[Note not found]"
+                
+                # --- Sanitize Note Content (Remove Markdown Fences) ---
+                # Remove leading ```markdown or ```
+                raw_note_content = re.sub(r"^```(?:markdown)?\s*", "", raw_note_content, flags=re.IGNORECASE)
+                # Remove trailing ```
+                raw_note_content = re.sub(r"\s*```\s*$", "", raw_note_content)
+                # ------------------------------------------------------
+
                 html_note_content = md.render(raw_note_content)
 
                 pages.append({
