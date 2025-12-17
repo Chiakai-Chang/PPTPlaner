@@ -3,9 +3,10 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>PPTPlaner Guide</title>
+    <title>{{ project_info.title }} - PPTPlaner</title>
 <style>
   :root{
+    --header-height: 100px;
     --bg:#ffffff; --fg:#0f172a; --muted:#64748b; --card:#f8fafc; --accent:#2563eb; --accent-2:#1d4ed8;
     --border:#e2e8f0; --ok:#16a34a; --warn:#ca8a04; --bad:#dc2626; --pill:#e0e7ff;
   }
@@ -15,10 +16,82 @@
   }
   *{box-sizing:border-box}
   body{margin:0; font-family:ui-sans-serif,system-ui,-apple-system,"Segoe UI",Roboto,"Noto Sans TC",Arial,"Apple Color Emoji","Segoe UI Emoji"; background:var(--bg); color:var(--fg);}
-  header{position:sticky; top:0; z-index:10; backdrop-filter:saturate(180%) blur(10px); background:color-mix(in srgb, var(--bg) 88%, transparent); border-bottom:1px solid var(--border);}
+  
+  /* --- Header Styling (Dynamic) --- */
+  header {
+      position: sticky; 
+      top: 0; 
+      z-index: 1000; 
+      background: var(--bg);
+      border-bottom: 1px solid var(--border);
+      padding: 20px 0;
+      width: 100%;
+      transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+  }
+  
+  header .container {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      max-width: 1100px;
+      margin: 0 auto;
+      padding: 0 16px;
+      transition: all 0.3s;
+  }
+
+  header h1 {
+      margin: 0; 
+      font-size: 22px;
+      line-height: 1.3;
+      color: var(--fg);
+      font-weight: 700;
+      transition: font-size 0.3s;
+  }
+
+  /* Scrolled State (Compact) */
+  body.scrolled-mode header {
+      padding: 8px 0;
+      background: rgba(255, 255, 255, 0.95);
+      backdrop-filter: blur(10px);
+      box-shadow: 0 4px 20px -5px rgba(0,0,0,0.1);
+  }
+  
+  body.scrolled-mode header h1 {
+      font-size: 18px;
+      color: var(--fg);
+  }
+
+  /* Hide subtitle/meta in header on scroll (handled by JS moving it or CSS hiding) */
+  body.scrolled-mode header .header-extras { display: none !important; }
+  body.scrolled-mode header .header-wrapper { align-items: center; } /* Center vertically when compact */
+
   .container{max-width:1100px; margin:0 auto; padding:16px;}
-  h1{margin:6px 0 2px; font-size:22px;}
-  p.subtitle{margin:0 0 10px; color:var(--muted); font-size:14px;}
+  
+  .header-wrapper { display: flex; justify-content: space-between; align-items: flex-start; gap: 20px; }
+  .header-left { flex: 1; min-width: 0; } /* min-width 0 allows text truncation if needed */
+  .header-right { flex-shrink: 0; padding-top: 4px; }
+
+  .header-extras { margin-top: 12px; transition: opacity 0.2s; }
+  
+  .source-btn {
+      display: inline-flex; align-items: center; gap: 4px; padding: 6px 16px; 
+      background-color: var(--pill); color: var(--accent); text-decoration: none; 
+      border-radius: 20px; font-size: 13px; font-weight: 500; border: 1px solid var(--border); 
+      transition: all 0.2s; white-space: nowrap;
+  }
+  .source-btn:hover { background-color: var(--border); }
+
+  p.subtitle{
+      margin:0 0 5px; 
+      color:var(--muted); 
+      font-size:14px; 
+      line-height: 1.5;
+      display: -webkit-box;
+      -webkit-line-clamp: 3;
+      -webkit-box-orient: vertical;
+      overflow: hidden;
+  }
+  
   .toolbar{display:flex; gap:8px; flex-wrap:wrap; align-items:center; margin:8px 0 12px;}
   button{padding:8px 12px; font-size: 14px; border:1px solid var(--border); border-radius:12px; background:var(--card); color:var(--fg); cursor:pointer;}
   button:hover{background-color: var(--border);}
@@ -29,14 +102,47 @@
   .meta a:hover{text-decoration:underline;}
 
   /* --- Layout Styles for side-by-side view --- */
-  .page { display: flex; border-bottom: 1px solid var(--border); padding: 20px 0; margin-bottom: 20px; }
-  .slide { flex: 1; padding-right: 20px; border-right: 1px solid var(--border); min-width: 0; }
-  .notes { flex: 1; padding-left: 20px; min-width: 0; }
+  .page {
+      display: flex;
+      border-bottom: 1px solid var(--border);
+      padding: 40px 0;
+      margin-bottom: 0;
+      align-items: flex-start;
+      scroll-margin-top: 120px; /* Offset for anchor jumping */
+  }
+  
+  .slide {
+      flex: 1;
+      padding-right: 30px;
+      border-right: 1px solid var(--border);
+      min-width: 0;
+      position: sticky;
+      top: calc(var(--header-height) + 20px);
+      height: fit-content; 
+      max-height: calc(100vh - var(--header-height) - 40px);
+      overflow-y: auto;
+  }
+  
+  .notes {
+      flex: 1;
+      padding-left: 30px;
+      min-width: 0;
+  }
+
   h2 { border-bottom: 1px solid var(--border); padding-bottom: 10px; color: var(--fg); font-size: 18px; margin-top: 0; }
   pre { background: var(--card); padding: 15px; border-radius: 8px; white-space: pre-wrap; word-wrap: break-word; border: 1px solid var(--border); font-family: Consolas, Monaco, 'Andale Mono', 'Ubuntu Mono', monospace; }
   
   /* --- SVG & Toggle Styles --- */
   .slide-toolbar { display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px; }
+  .img-text-toggle-btn {
+      padding: 4px 10px;
+      background: var(--pill);
+      color: var(--accent);
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      font-size: 12px;
+      cursor: pointer;
+  }
 
   .svg-container {
     position: relative;
@@ -47,6 +153,7 @@
     margin-bottom: 15px;
     border-radius: 8px;
     background-color: var(--card);
+    border: 1px solid var(--border);
   }
   .svg-container svg {
     position: absolute;
@@ -54,8 +161,6 @@
     left: 0;
     width: 100%;
     height: 100%;
-    border-radius: 8px;
-    box-shadow: 0 4px 15px -2px rgba(0,0,0,0.08);
   }
 
   .conceptual-svg-container {
@@ -72,76 +177,151 @@
     display: block;
   }
 
-  .slide-view-svg .no-svg-placeholder { aspect-ratio: 16/9; background-color: var(--card); border: 2px dashed var(--border); border-radius: 8px; display: flex; justify-content: center; align-items: center; color: var(--muted); font-size: 14px; }
-
   /* Generic styles for rendered markdown content */
   .rendered-content h1, .rendered-content h2, .rendered-content h3, .rendered-content h4, .rendered-content h5, .rendered-content h6 { border-bottom: none; padding-bottom: 5px; margin-top: 20px; }
   .rendered-content ul, .rendered-content ol { padding-left: 25px; }
   .rendered-content code { background-color: var(--pill); padding: 2px 5px; border-radius: 3px; font-family: Consolas, Monaco, 'Andale Mono', 'Ubuntu Mono', monospace; }
-  .rendered-content blockquote { border-left: 4px solid var(--border); padding-left: 15px; color: var(--muted); margin-left: 0; }
+  .rendered-content blockquote { border-left: 4px solid var(--accent); padding-left: 15px; color: var(--muted); margin-left: 0; background: var(--card); padding: 10px 15px; border-radius: 0 8px 8px 0; }
   .rendered-content table { border-collapse: collapse; width: 100%; margin: 1em 0; }
   .rendered-content th, .rendered-content td { border: 1px solid var(--border); padding: 8px; }
   .rendered-content th { background-color: var(--card); }
   .rendered-content img { max-width: 100%; height: auto; display: block; margin: 1em 0; border-radius: 8px; }
+
+  /* --- Mobile Layout --- */
+  .mobile-tab-bar { display: none; }
+
+  @media (max-width: 768px) {
+      :root {
+          --header-height: 60px;
+      }
+
+      .page { 
+          display: block !important; 
+          padding-top: 0 !important; 
+          border-bottom: 8px solid #f1f5f9 !important; 
+          padding-bottom: 30px;
+      }
+      .slide { 
+          padding-right: 0 !important; 
+          border-right: none !important; 
+          border-bottom: none !important;
+          margin-bottom: 0 !important; 
+          position: static !important; 
+          max-height: none !important;
+      }
+      .notes { 
+          padding-left: 0 !important; 
+          margin-top: 10px;
+      }
+      .slide-controls { display: none !important; }
+      
+      /* Mobile Sticky Tab Bar */
+      .mobile-tab-bar { 
+          display: flex !important; 
+          position: sticky;
+          top: var(--header-height);
+          z-index: 900;
+          background: rgba(255, 255, 255, 0.98);
+          backdrop-filter: blur(8px);
+          padding: 8px 16px;
+          border-bottom: 1px solid var(--border);
+          margin: 0 -16px 20px -16px; /* Full width bleed */
+          box-shadow: 0 4px 6px -4px rgba(0,0,0,0.05);
+          justify-content: space-around;
+      }
+      
+      .mobile-tab-btn {
+          flex: 1; padding: 8px; font-size: 14px; border: none; 
+          background: transparent; cursor: pointer; color: var(--muted); 
+          transition: all 0.2s; margin: 0 2px; border-radius: 8px; font-weight: 500;
+      }
+      .mobile-tab-btn.active {
+          background: var(--pill);
+          color: var(--accent);
+          box-shadow: inset 0 0 0 1px var(--border);
+      }
+  }
 </style>
 </head>
 <body>
 <header>
   <div class="container">
-    <h1>{{ project_info.title }}</h1>
-    <p class="subtitle">{{ project_info.summary }}</p>
-    {% if project_info.author_info_text %}
-    <em style="font-size: 15px; color: var(--muted);">{{ project_info.author_info_text }}</em>
-    {% endif %}
+    <div class="header-wrapper">
+        <div class="header-left">
+            <h1>{{ project_info.title }}</h1>
+            <div class="header-extras">
+                <p class="subtitle">{{ project_info.summary }}</p>
+                {% if project_info.author_info_text %}
+                <div class="meta-info" style="font-size: 13px; color: var(--muted); margin-top:8px;">
+                    {{ project_info.author_info_text | safe }}
+                </div>
+                {% endif %}
+            </div>
+        </div>
+        <div class="header-right">
+            {% if project_info.source_url %}
+            <a href="{{ project_info.source_url }}" target="_blank" class="source-btn">
+                <span>🔗</span> 原文連結
+            </a>
+            {% endif %}
+        </div>
+    </div>
   </div>
 </header>
 
 <main class="container">
   {% if project_info.overview_html %}
-  <div class="rendered-content" style="font-size: 15px; padding: 15px 0;">
-      {{ project_info.overview_html | safe }}
+  <div class="overview-section" style="margin-bottom: 40px;">
+      <h2 style="font-size: 20px; border-bottom: 2px solid var(--accent); display: inline-block; padding-bottom: 5px; margin-bottom: 15px;">Project Overview</h2>
+      <div class="rendered-content" style="font-size: 16px; line-height: 1.7; color: var(--fg);">
+          {{ project_info.overview_html | safe }}
+      </div>
   </div>
-  <div class="hr"></div>
   {% else %}
   <div class="hr"></div>
   {% endif %}
   
   {% for page in pages %}
         <div class="page" id="page-{{ page.id }}">
-            <div class="slide">
-                <div class="slide-toolbar">
+            
+            <!-- Mobile Tab Bar (Injected by JS logic or rendered here directly) -->
+            <div class="mobile-tab-bar">
+                <button class="mobile-tab-btn active" onclick="switchTab('{{ page.id }}', 'slide')">🖼️ 簡報</button>
+                <button class="mobile-tab-btn" onclick="switchTab('{{ page.id }}', 'text')">📄 文字</button>
+                <button class="mobile-tab-btn" onclick="switchTab('{{ page.id }}', 'notes')">📝 講稿</button>
+            </div>
+
+            <div class="slide" id="slide-col-{{ page.id }}">
+                <div class="slide-toolbar slide-controls">
                     <h2>Slide {{ page.id }}</h2>
                     {% if page.slide_svg_content %}
-                    <button class="toggle-view-btn" data-page-id="{{ page.id }}">顯示文字</button>
+                    <button class="img-text-toggle-btn" onclick="toggleDesktopView('{{ page.id }}')">切換 文字/圖像</button>
                     {% endif %}
                 </div>
 
+                <!-- Visual Content (SVG) -->
                 {% if page.slide_svg_content %}
-                <div class="slide-view-svg" id="svg-view-{{ page.id }}">
+                <div class="slide-visual" id="visual-view-{{ page.id }}">
                     <div class="svg-container">
                         {{ page.slide_svg_content | safe }}
                     </div>
-                    
                     {% if page.conceptual_svg_content %}
-                        <div class="hr" style="margin: 20px 0;"></div>
+                        <div style="margin: 15px 0; font-size:12px; color:var(--muted); text-align:center;">--- 概念示意圖 ---</div>
                         <div class="conceptual-svg-container">
                             {{ page.conceptual_svg_content | safe }}
                         </div>
                     {% endif %}
                 </div>
-
-                <div class="slide-view-text rendered-content" id="text-view-{{ page.id }}" style="display: none;">
-                    {{ page.slide_content_html | safe }}
-                </div>
-                {% else %}
-                {# If no SVG, just show the text content directly #}
-                <div class="slide-view-text rendered-content" id="text-view-{{ page.id }}">
-                    {{ page.slide_content_html | safe }}
-                </div>
                 {% endif %}
+
+                <!-- Text Content -->
+                <div class="slide-text rendered-content" id="text-view-{{ page.id }}" {% if page.slide_svg_content %}style="display:none;"{% endif %}>
+                    {{ page.slide_content_html | safe }}
+                </div>
             </div>
-            <div class="notes">
-                <h2>Notes for Slide {{ page.id }}</h2>
+
+            <div class="notes" id="notes-col-{{ page.id }}">
+                <h2 class="slide-controls">Speaker Notes</h2>
                 <div class="note-content rendered-content">
                     {{ page.note_content_html | safe }}
                 </div>
@@ -153,38 +333,106 @@
     <footer class="footer">
         <div class="hr" style="margin: 40px 0 20px;"></div>
         <div class="meta" style="justify-content: center; font-size: 14px;">
-            <span>Author: Chiakai Chang</span>
+            <span>Generated by PPTPlaner</span>
             <a href="https://github.com/Chiakai-Chang/PPTPlaner" target="_blank">GitHub</a>
-            <a href="https://www.linkedin.com/in/chiakai-chang-htciu" target="_blank">LinkedIn</a>
-            <a href="mailto:lotifv@gmail.com">Email</a>
         </div>
-        <p style="margin-top: 8px; font-size: 11px;">Copyright &copy; 2025 Chiakai Chang. All Rights Reserved.</p>
+        <p style="margin-top: 8px; font-size: 11px;">&copy; 2025 Chiakai Chang. All Rights Reserved.</p>
     </footer>
 
     <script>
-        document.addEventListener('DOMContentLoaded', function() {
-            const toggleButtons = document.querySelectorAll('.toggle-view-btn');
-            toggleButtons.forEach(button => {
-                button.addEventListener('click', function() {
-                    const pageId = this.dataset.pageId;
-                    const svgView = document.getElementById(`svg-view-${pageId}`);
-                    const textView = document.getElementById(`text-view-${pageId}`);
+        // --- Header Scroll Logic ---
+        function handleScroll() {
+            const scrollY = window.scrollY;
+            const body = document.body;
+            const header = document.querySelector('header');
+            
+            if (scrollY > 50) {
+                if (!body.classList.contains('scrolled-mode')) {
+                    body.classList.add('scrolled-mode');
+                    document.documentElement.style.setProperty('--header-height', header.offsetHeight + 'px');
+                }
+            } else {
+                if (body.classList.contains('scrolled-mode')) {
+                    body.classList.remove('scrolled-mode');
+                    document.documentElement.style.setProperty('--header-height', header.offsetHeight + 'px');
+                }
+            }
+        }
+        window.addEventListener('scroll', handleScroll);
+        window.addEventListener('load', handleScroll);
 
-                    if (svgView && textView) {
-                        const isSvgVisible = svgView.style.display !== 'none';
-                        if (isSvgVisible) {
-                            svgView.style.display = 'none';
-                            textView.style.display = 'block';
-                            this.textContent = '顯示圖像';
-                        } else {
-                            svgView.style.display = 'block';
-                            textView.style.display = 'none';
-                            this.textContent = '顯示文字';
-                        }
+        // --- Desktop Toggle Logic ---
+        function toggleDesktopView(pageId) {
+            const visualView = document.getElementById(`visual-view-${pageId}`);
+            const textView = document.getElementById(`text-view-${pageId}`);
+            
+            if (visualView.style.display === 'none') {
+                visualView.style.display = 'block';
+                textView.style.display = 'none';
+            } else {
+                visualView.style.display = 'none';
+                textView.style.display = 'block';
+            }
+        }
+
+        // --- Mobile Tab Logic ---
+        function switchTab(pageId, mode) {
+            const slideCol = document.getElementById(`slide-col-${pageId}`);
+            const notesCol = document.getElementById(`notes-col-${pageId}`);
+            
+            const visualView = document.getElementById(`visual-view-${pageId}`);
+            const textView = document.getElementById(`text-view-${pageId}`);
+            
+            // 1. Manage Columns Visibility
+            if (mode === 'notes') {
+                slideCol.style.display = 'none';
+                notesCol.style.display = 'block';
+            } else {
+                slideCol.style.display = 'block';
+                notesCol.style.display = 'none';
+                
+                // 2. Manage Slide Content (Visual vs Text)
+                if (mode === 'slide') {
+                    if (visualView) {
+                        visualView.style.display = 'block';
+                        textView.style.display = 'none';
+                    } else {
+                        // Fallback if no visual exists
+                        textView.style.display = 'block';
                     }
-                });
+                } else if (mode === 'text') {
+                    if (visualView) visualView.style.display = 'none';
+                    textView.style.display = 'block';
+                }
+            }
+
+            // 3. Update Buttons State
+            const pageDiv = document.getElementById(`page-${pageId}`);
+            const btns = pageDiv.querySelectorAll('.mobile-tab-btn');
+            btns.forEach(btn => btn.classList.remove('active'));
+            
+            // Find the button that was clicked (approximate match based on text content logic or order)
+            // Simpler: pass 'this' or recreate logic. Let's just highlight based on index for simplicity or text.
+            const iconMap = {'slide': '🖼️', 'text': '📄', 'notes': '📝'};
+            const targetIcon = iconMap[mode];
+            btns.forEach(btn => {
+                if(btn.innerText.includes(targetIcon)) btn.classList.add('active');
             });
-        });
+        }
+
+        // Init Mobile State
+        function initMobile() {
+            if (window.innerWidth <= 768) {
+                const pages = document.querySelectorAll('.page');
+                pages.forEach(page => {
+                    const pageId = page.id.replace('page-', '');
+                    // Default to 'slide' view
+                    switchTab(pageId, 'slide');
+                });
+            }
+        }
+        window.addEventListener('resize', initMobile);
+        window.addEventListener('load', initMobile);
     </script>
 </body>
 </html>

@@ -1,6 +1,7 @@
 import os
 import re
 import sys
+import shutil
 import subprocess
 import threading
 import webbrowser
@@ -693,44 +694,39 @@ class App(tk.Tk):
             messagebox.showerror("錯誤", "原始 guide.html 路徑無效。")
             return
 
-        # Determine output path (default to slide.html in same dir)
         output_dir = os.path.dirname(html_path)
-        output_path = filedialog.asksaveasfilename(
-            initialdir=output_dir, initialfile="slide.html",
-            defaultextension=".html", filetypes=(("HTML files", "*.html"),)
-        )
-        if not output_path: return
-
+        slides_dir = os.path.join(output_dir, "slides")
+        
         try:
-            with open(html_path, "r", encoding="utf-8") as f:
-                content = f.read()
+            # 1. Prepare Images (Copy to slides dir with standard names)
+            if not os.path.exists(slides_dir): os.makedirs(slides_dir)
+            
+            for slide_id, path_var in self.slide_image_map.items():
+                src_img = path_var.get()
+                if src_img and os.path.exists(src_img):
+                    # Determine extension
+                    _, ext = os.path.splitext(src_img)
+                    if not ext: ext = ".png"
+                    
+                    dest_img = os.path.join(slides_dir, f"slide_{slide_id}{ext}")
+                    shutil.copy2(src_img, dest_img)
 
-            # --- Source URL Injection ---
+            # 2. Run Build Script
+            build_script = os.path.join("scripts", "build_guide.py")
+            cmd = [sys.executable, build_script, f"--output-dir={output_dir}"]
+            
+            # Pass manual Source URL if provided (Non-destructive to overview.md)
             source_url = self.source_url_var.get().strip()
             if source_url:
-                # Styled button HTML - Compact version
-                url_btn_html = f"""
-                <a href="{source_url}" target="_blank" style="display: inline-flex; align-items: center; gap: 4px; padding: 4px 10px; margin-top: 8px; background-color: var(--pill); color: var(--accent); text-decoration: none; border-radius: 12px; font-size: 12px; font-weight: 500; border: 1px solid var(--border); transition: all 0.2s;">
-                    <span style="font-size: 14px;">🔗</span> 原文連結
-                </a>
-                """
-                
-                # Check if button already exists to prevent duplication
-                if '🔗</span> 原文連結' not in content:
-                    # Inject it right after the </em> tag (Author info) to keep it compact
-                    # If </em> exists, append it there. Otherwise fall back to previous method.
-                    if '</em>' in content:
-                        content = content.replace('</em>', f'</em><br>{url_btn_html}', 1)
-                    elif '</header>' in content:
-                        header_end_idx = content.find('</header>')
-                        container_end_idx = content.rfind('</div>', 0, header_end_idx)
-                        if container_end_idx != -1:
-                            content = content[:container_end_idx] + url_btn_html + content[container_end_idx:]
+                cmd.append(f"--manual-source-url={source_url}")
             
-            # --- YouTube Injection ---
+            # Run build
+            subprocess.check_call(cmd)
+
+            # 3. Inject YouTube (Post-processing on the FRESHLY built HTML)
             yt_id = self.youtube_id_var.get().strip()
             if yt_id:
-                # Simple parser to extract ID if user pastes full URL
+                # Simple parser
                 if "v=" in yt_id:
                     try: yt_id = yt_id.split("v=")[1].split("&")[0]
                     except: pass
@@ -738,8 +734,6 @@ class App(tk.Tk):
                     try: yt_id = yt_id.split("youtu.be/")[1].split("?")[0]
                     except: pass
                 
-                # Responsive Video HTML Block
-                # Standard youtube domain is often more reliable for local file playback than nocookie
                 video_html = f"""
                 <div class="video-section" style="margin-bottom: 30px; margin-top: 10px;">
                     <style>
@@ -773,65 +767,17 @@ class App(tk.Tk):
                     <div class="hr" style="margin-top: 20px;"></div>
                 </div>
                 """
-                # Inject immediately after <main class="container">
-                if '<main class="container">' in content:
-                    content = content.replace('<main class="container">', f'<main class="container">\n{video_html}', 1)
-
-            # Inject CSS and JS using the new method
-            style_script = self.get_html_style_script()
-            
-            if "</head>" in content:
-                content = content.replace("</head>", f"{style_script}</head>")
-            else:
-                content = style_script + content
-
-            processed_count = 0
-            
-            # Iterate through map and replace
-            for slide_id, path_var in self.slide_image_map.items():
-                img_path = path_var.get()
-                if not img_path or not os.path.exists(img_path):
-                    continue # Skip if no image selected
-
-                # Encode image
-                mime_type, _ = mimetypes.guess_type(img_path)
-                if not mime_type: mime_type = "image/png"
-                with open(img_path, "rb") as img_f:
-                    b64_data = base64.b64encode(img_f.read()).decode('utf-8')
-                    img_src = f"data:{mime_type};base64,{b64_data}"
-
-                # Robust replacement logic using string search
-                # 1. Find the exact string for the text div opening tag
-                # We look for the ID pattern to locate it
-                search_pattern = re.compile(rf'(<div[^>]*id="text-view-{re.escape(slide_id)}"[^>]*>)')
-                match = search_pattern.search(content)
                 
-                if match:
-                    original_tag = match.group(1) # e.g. <div class="..." id="text-view-01">
-                    
-                    # 2. Construct insertion content
-                    insertion = f"""
-                    <div class="slide-controls" style="text-align: right; margin-bottom: 8px;">
-                    <button id="btn-toggle-{slide_id}" class="img-text-toggle-btn" onclick="toggleImageText('{slide_id}')">切換為文字 (Show Text)</button>
-                    </div>
-                    <div id="img-view-{slide_id}" class="slide-img-container" style="display:block; margin-bottom:10px;">
-                    <img src="{img_src}">
-                    </div>
-                    """
-                    
-                    # 3. Create the new block: Insertion + Original Tag + Script to hide text
-                    new_block = f'{insertion}{original_tag}<script>document.getElementById("text-view-{slide_id}").style.display="none";</script>'
-                    
-                    # 4. Replace ONLY the original tag with the new block
-                    # Using string replace ensures we don't duplicate surrounding content
-                    content = content.replace(original_tag, new_block, 1)
-                    processed_count += 1
-            
-            with open(output_path, "w", encoding="utf-8") as f:
-                f.write(content)
-            
-            messagebox.showinfo("成功", f"已生成 {output_path}\n共處理 {processed_count} 頁投影片。")
-            webbrowser.open(output_path)
+                guide_file = os.path.join(output_dir, "guide.html")
+                if os.path.exists(guide_file):
+                    content = Path(guide_file).read_text(encoding="utf-8")
+                    # Inject after main container start
+                    if '<main class="container">' in content:
+                        content = content.replace('<main class="container">', f'<main class="container">\n{video_html}', 1)
+                        Path(guide_file).write_text(content, encoding="utf-8")
+
+            messagebox.showinfo("成功", "已重新生成 guide.html (包含圖片與設定)！")
+            webbrowser.open(os.path.join(output_dir, "guide.html"))
 
         except Exception as e:
             messagebox.showerror("錯誤", f"生成過程發生錯誤: {e}")

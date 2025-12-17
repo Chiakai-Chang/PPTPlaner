@@ -2,6 +2,8 @@ import os
 import sys
 import argparse
 import re
+import base64
+import mimetypes
 from pathlib import Path
 from markdown_it import MarkdownIt
 
@@ -37,6 +39,7 @@ def render_html(pages, templates_dir, project_info):
 def main():
     parser = argparse.ArgumentParser(description="Build HTML guide from slides and notes.")
     parser.add_argument("--output-dir", required=True, help="The unique output directory for the run.")
+    parser.add_argument("--manual-source-url", help="Optional source URL to override or supplement overview.md")
     args = parser.parse_args()
 
     try:
@@ -69,32 +72,31 @@ def main():
             author_match = re.search(r"\*\*Author:\*\*\s*(.+)$", overview_content, re.MULTILINE)
             authors = author_match.group(1).strip() if author_match else None
 
-            # 3. Parse Source URL
-            source_match = re.search(r"\*\*Source:\*\*\s*(.+)$", overview_content, re.MULTILINE)
-            source_url = source_match.group(1).strip() if source_match else None
+            # 3. Parse Source URL (Priority: Argument > File)
+            source_url = args.manual_source_url
+            if not source_url:
+                source_match = re.search(r"\*\*Source:\*\*\s*(.+)$", overview_content, re.MULTILINE)
+                source_url = source_match.group(1).strip() if source_match else None
             
+            project_info["source_url"] = source_url
+
             # 4. Parse Summary (Flexible Header)
-            summary_match = re.search(r"##\s+(?:Summary|摘要).*?\n\n(.*?)(?=\n\n##|\Z)", overview_content, re.DOTALL | re.IGNORECASE)
+            summary_match = re.search(r"##\s+(?:Summary|摘要).*?\n(.*?)(?=\n##|\Z)", overview_content, re.DOTALL | re.IGNORECASE)
             if summary_match:
+                # Remove the header line itself if captured (though regex above captures group 1 which is content)
+                # Just strip whitespace
                 project_info["summary"] = summary_match.group(1).strip()
 
             # 5. Parse Overview (Flexible Header)
-            overview_match = re.search(r"##\s+(?:Overview|總覽).*?\n\n(.*?)(?=\n\n##|\Z)", overview_content, re.DOTALL | re.IGNORECASE)
+            overview_match = re.search(r"##\s+(?:Overview|總覽).*?\n(.*?)(?=\n##|\Z)", overview_content, re.DOTALL | re.IGNORECASE)
             if overview_match:
                 overview_md = overview_match.group(1).strip()
+                # Remove the header if it somehow got included (it shouldn't with the regex above, but safety first)
+                overview_md = re.sub(r"^##\s+(?:Overview|總覽).*?\n", "", overview_md, flags=re.IGNORECASE).strip()
                 project_info["overview_html"] = md.render(overview_md)
 
             # Construct Author Text
             author_text = f"By {authors}" if authors and authors != 'N/A' else ""
-            
-            # Append Source URL button if available
-            if source_url and source_url.lower() != 'none' and source_url != '':
-                url_btn_html = f"""<br>
-                <a href="{source_url}" target="_blank" style="display: inline-flex; align-items: center; gap: 4px; padding: 4px 10px; margin-top: 8px; background-color: var(--pill); color: var(--accent); text-decoration: none; border-radius: 12px; font-size: 12px; font-weight: 500; border: 1px solid var(--border); transition: all 0.2s;">
-                    <span style="font-size: 14px;">🔗</span> 原文連結
-                </a>
-                """
-                author_text += url_btn_html
             
             project_info["author_info_text"] = author_text
 
@@ -117,17 +119,32 @@ def main():
                 note_file_name = f"note-{base_name}-zh.md"
                 note_path = notes_dir / note_file_name
 
-                # Find SVGs
+                # Find SVGs or Raster Images
                 slide_svg_file = slides_dir / f"slide_{slide_id}.svg"
                 conceptual_svg_file = slides_dir / f"conceptual_{slide_id}.svg"
 
-                slide_svg_content = None
+                slide_visual_content = None
+                
+                # Priority 1: SVG
                 if slide_svg_file.exists():
                     svg_text = slide_svg_file.read_text(encoding="utf-8")
                     # Remove width and height attributes to make it responsive
                     svg_text = re.sub(r'\s(width|height)="[^"]*"', '', svg_text)
-                    slide_svg_content = svg_text
+                    slide_visual_content = svg_text
                 
+                # Priority 2: Raster Images (PNG, JPG, JPEG, WEBP)
+                else:
+                    for ext in ['.png', '.jpg', '.jpeg', '.webp']:
+                        img_file = slides_dir / f"slide_{slide_id}{ext}"
+                        if img_file.exists():
+                            mime_type, _ = mimetypes.guess_type(img_file)
+                            if not mime_type: mime_type = f"image/{ext.replace('.', '')}"
+                            
+                            with open(img_file, "rb") as f:
+                                b64_data = base64.b64encode(f.read()).decode('utf-8')
+                                slide_visual_content = f'<img src="data:{mime_type};base64,{b64_data}" style="width:100%; height:auto;" alt="Slide {slide_id}">'
+                            break
+
                 conceptual_svg_content = None
                 if conceptual_svg_file.exists():
                     # For conceptual SVGs, we preserve the attributes so they can render with their natural aspect ratio.
@@ -151,7 +168,7 @@ def main():
                     "id": slide_id,
                     "slide_content_html": slide_content_html,
                     "note_content_html": html_note_content,
-                    "slide_svg_content": slide_svg_content,
+                    "slide_svg_content": slide_visual_content, # Renamed variable logic but kept key for template compatibility
                     "conceptual_svg_content": conceptual_svg_content,
                 })
             except IndexError:
