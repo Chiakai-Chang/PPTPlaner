@@ -203,6 +203,15 @@ sequenceDiagram
     *   系統會在 CLI 介面即時顯示每個階段的驗證結果與重試理由（例如：「內容遺漏」、「格式錯誤」）。
     *   同時，所有的 AI 推理過程（包含原始 Prompt、Raw Response、驗證回饋）都會完整記錄於 `logs/` 資料夾的日誌檔中，提供完整的 **可追溯性 (Traceability)**，讓您隨時可以「查帳」AI 的思考邏輯。
 
+## 📊 如何解讀日誌 (How to Read Logs)
+
+當您查看 `logs/` 資料夾中的日誌時，您會看到 AI 與品管系統的互動紀錄：
+
+*   **`✓ ... validation passed (Perfect).`**：表示產出完美符合所有標準，一次過關。
+*   **`✓ ... validation passed (Acceptable). Striving for perfection...`**：表示產出雖然可用（如：字數稍多），但 AI 認為還可以更好。系統已暫存此版本，並**主動重試**以追求完美。
+*   **`[QA Feedback]: ...`**：這是品管 Agent 發現的具體問題（如：缺少關鍵引文、格式錯誤）。系統會將此回饋傳遞給生成 Agent 進行修正。
+*   **`Max retries reached... Using best acceptable result.`**：表示經過多次嘗試仍未達到完美，系統為了不中斷流程，智慧地退回使用之前最好的「可接受」版本。
+
 ---
 
 ## 📂 核心檔案清單 (Core Project Files)

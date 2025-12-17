@@ -1,7 +1,7 @@
 # PPTPlaner - AI Presentation Generator (System Context)
 
-> **💡 "Code is our weapon against the anxiety of time."**
-> This document serves as the primary context for the Gemini CLI agent to understand the philosophy, architecture, and operational rules of the PPTPlaner project.
+"Code is our weapon against the anxiety of time."
+This document serves as the primary context for the Gemini CLI agent to understand the philosophy, architecture, and operational rules of the PPTPlaner project.
 
 ---
 
