@@ -898,16 +898,13 @@ def main():
         }
         
         final_memo = ""
+        acceptable_memo = ""
         feedback_history = []
         
         for attempt in range(args.memo_reworks + 1):
             if attempt > 0: print_info(f"  Reworking Memo {p_num}... (Attempt {attempt}/{args.memo_reworks})")
             
             memo_raw = run_agent(cfg["agent"], "MEMO", memo_vars, retries=cfg["agent_execution_retries"], model_name=cfg.get("gemini_model"))
-            # Memo output is Markdown, not JSON usually, but let's check prompt. 
-            # MEMO.md says "Generate your response... Output ONLY the content... pure Markdown".
-            # So we don't parse as JSON.
-            
             current_memo = memo_raw
             
             # Validate
@@ -915,20 +912,27 @@ def main():
             val_json_raw = run_agent(cfg["agent"], "VALIDATE_MEMO", val_vars, retries=cfg["agent_execution_retries"], model_name=cfg.get("gemini_model"))
             val_res = parse_ai_json_output(val_json_raw, "VALIDATE_MEMO")
             
+            feedback = val_res.get("feedback", "") if val_res else ""
+            
             if val_res and val_res.get("is_valid"):
+                print_success(f"Memo {p_num} validation passed (Perfect).")
                 final_memo = current_memo
                 break
             elif val_res and val_res.get("is_acceptable"):
-                final_memo = current_memo
-                break # Accept acceptable
-                
-            feedback = val_res.get("feedback", "") if val_res else ""
+                print_success(f"Memo {p_num} validation passed (Acceptable). Striving for perfection...")
+                if not acceptable_memo: acceptable_memo = current_memo
+                # Continue retrying
+            
             if feedback: print_info(f"  [QA Feedback]: {feedback}")
             
             feedback_history.append(f"Attempt {attempt+1} Feedback: {feedback}")
             memo_vars["rework_feedback"] = "\n\n".join(feedback_history)
         
-        if not final_memo: final_memo = current_memo # Fallback
+        if not final_memo and acceptable_memo:
+            print_info(f"Max retries reached for Memo {p_num}. Using best acceptable result.")
+            final_memo = acceptable_memo
+        
+        if not final_memo: final_memo = current_memo # Fallback to last attempt if everything failed
         
         (notes_dir / f"note-{p_num}_{safe_topic}-zh.md").write_text(final_memo, encoding="utf-8")
 
@@ -949,6 +953,7 @@ def main():
             # --- 1. Slide SVG ---
             svg_vars = {"slide_content": slide_content}
             final_slide_svg = ""
+            acceptable_slide_svg = ""
             feedback_history = []
             
             for attempt in range(args.slide_svg_reworks + 1):
@@ -956,7 +961,6 @@ def main():
                 
                 raw = run_agent(cfg["agent"], "CREATE_SLIDE_SVG", svg_vars, retries=cfg["agent_execution_retries"], model_name=cfg.get("gemini_model"))
                 
-                # Extract SVG
                 current_svg = raw
                 svg_match = re.search(r"<svg.*?</svg>", raw, re.DOTALL)
                 if svg_match: current_svg = svg_match.group(0)
@@ -970,25 +974,33 @@ def main():
                 val_json = run_agent(cfg["agent"], "VALIDATE_SLIDE_SVG", val_vars, retries=cfg["agent_execution_retries"], model_name=cfg.get("gemini_model"))
                 val_res = parse_ai_json_output(val_json, "VALIDATE_SLIDE_SVG")
                 
+                feedback = val_res.get("feedback", "") if val_res else ""
+
                 if val_res and val_res.get("is_valid"):
+                    print_success(f"Slide SVG {p_num} validation passed (Perfect).")
                     final_slide_svg = current_svg
                     break
                 elif val_res and val_res.get("is_acceptable"):
-                    final_slide_svg = current_svg
-                    break
+                    print_success(f"Slide SVG {p_num} validation passed (Acceptable). Striving for perfection...")
+                    if not acceptable_slide_svg: acceptable_slide_svg = current_svg
+                    # Continue
                 
-                feedback = val_res.get("feedback", "") if val_res else ""
                 if feedback: print_info(f"  [QA Feedback]: {feedback}")
                 
                 feedback_history.append(f"Attempt {attempt+1} Feedback: {feedback}")
                 svg_vars["rework_feedback"] = "\n\n".join(feedback_history)
             
+            if not final_slide_svg and acceptable_slide_svg:
+                print_info(f"Max retries reached for Slide SVG {p_num}. Using best acceptable result.")
+                final_slide_svg = acceptable_slide_svg
+
             if final_slide_svg:
                 (slides_dir / f"slide_{p_num}.svg").write_text(final_slide_svg, encoding="utf-8")
 
             # --- 2. Conceptual SVG ---
             con_vars = {"slide_content": slide_content, "memo_content": memo_content}
             final_con_svg = ""
+            acceptable_con_svg = ""
             feedback_history = []
             
             for attempt in range(args.conceptual_svg_reworks + 1):
@@ -1000,7 +1012,6 @@ def main():
                     print_info("  Agent decided no conceptual SVG is needed.")
                     break
                 
-                # Extract SVG
                 current_svg = raw
                 svg_match = re.search(r"<svg.*?</svg>", raw, re.DOTALL)
                 if svg_match: current_svg = svg_match.group(0)
@@ -1013,18 +1024,25 @@ def main():
                 val_json = run_agent(cfg["agent"], "VALIDATE_CONCEPTUAL_SVG", val_vars, retries=cfg["agent_execution_retries"], model_name=cfg.get("gemini_model"))
                 val_res = parse_ai_json_output(val_json, "VALIDATE_CONCEPTUAL_SVG")
                 
+                feedback = val_res.get("feedback", "") if val_res else ""
+
                 if val_res and val_res.get("is_valid"):
+                    print_success(f"Conceptual SVG {p_num} validation passed (Perfect).")
                     final_con_svg = current_svg
                     break
                 elif val_res and val_res.get("is_acceptable"):
-                    final_con_svg = current_svg
-                    break
+                    print_success(f"Conceptual SVG {p_num} validation passed (Acceptable). Striving for perfection...")
+                    if not acceptable_con_svg: acceptable_con_svg = current_svg
+                    # Continue
                 
-                feedback = val_res.get("feedback", "") if val_res else ""
                 if feedback: print_info(f"  [QA Feedback]: {feedback}")
                 
                 feedback_history.append(f"Attempt {attempt+1} Feedback: {feedback}")
                 con_vars["rework_feedback"] = "\n\n".join(feedback_history)
+
+            if not final_con_svg and acceptable_con_svg:
+                print_info(f"Max retries reached for Conceptual SVG {p_num}. Using best acceptable result.")
+                final_con_svg = acceptable_con_svg
 
             if final_con_svg:
                 (slides_dir / f"conceptual_{p_num}.svg").write_text(final_con_svg, encoding="utf-8")
