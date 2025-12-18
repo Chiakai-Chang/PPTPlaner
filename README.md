@@ -88,8 +88,12 @@
 
 *   **用途**：我們需要它來安裝 AI 的核心命令列工具 (CLI)。
 *   **如何安裝**：
-    1.  前往 [Node.js 官方網站](https://nodejs.org/) 下載 `LTS` (長期支援) 版本。
-    2.  執行安裝程式，一路點擊「下一步 (Next)」即可完成安裝。`npm` 會跟著一起被裝好。
+    *  **Winodws系統** 請參考 GitHub repo: [NVM for Windows](https://github.com/coreybutler/nvm-windows)
+       *  到此[下載](https://github.com/coreybutler/nvm-windows/releases) 最新版的安裝檔 nvm-setup.exe
+       *  後續詳細步驟請參考: Windows 開發人員指南：[在 Windows 上安裝 Node.js](https://learn.microsoft.com/zh-tw/windows/dev-environment/javascript/nodejs-on-windows)
+    *  **其他系統**:
+       1.  前往 [Node.js 官方網站](https://nodejs.org/) 下載 `LTS` (長期支援) 版本。
+       2.  執行安裝程式，一路點擊「下一步 (Next)」即可完成安裝。`npm` 會跟著一起被裝好。
 
 #### 步驟 3：安裝 AI Agent (以 Gemini 為例)
 
@@ -100,6 +104,8 @@
         ```bash
         npm install -g @google/gemini-cli@latest
         ```
+*   詳細可參考 CodeLove 愛寫扣論壇：[Google Gemini CLI 教學：如何安裝與使用（附圖片）](https://codelove.tw/@tony/post/qvpDJ3)
+
 
 完成以上三個步驟後，您的電腦就具備執行本專案所需的一切環境了！
 
