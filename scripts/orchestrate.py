@@ -722,6 +722,7 @@ def main():
         
         if val_res and val_res.get("is_valid"):
             print_success("Analysis validation passed (Perfect).")
+            print_info(f"Analysis validation feedback: {feedback}")
             analysis_data = current_data
             break
         elif val_res and val_res.get("is_acceptable"):
@@ -848,6 +849,7 @@ def main():
         
         if val_res and val_res.get("is_valid"):
             print_success("Deck validation passed (Perfect).")
+            print_info(f"Deck validation feedback: {feedback}")
             last_deck_content = slides_list
             break
         elif val_res and val_res.get("is_acceptable"):
@@ -916,6 +918,7 @@ def main():
             
             if val_res and val_res.get("is_valid"):
                 print_success(f"Memo {p_num} validation passed (Perfect) on attempt {attempt}.")
+                if feedback: print_info(f"  [QA Feedback]: {feedback}")
                 final_memo = current_memo
                 break
             elif val_res and val_res.get("is_acceptable"):
@@ -978,6 +981,7 @@ def main():
 
                 if val_res and val_res.get("is_valid"):
                     print_success(f"Slide SVG {p_num} validation passed (Perfect) on attempt {attempt}.")
+                    if feedback: print_info(f"  [QA Feedback]: {feedback}")
                     final_slide_svg = current_svg
                     break
                 elif val_res and val_res.get("is_acceptable"):
@@ -1028,6 +1032,7 @@ def main():
 
                 if val_res and val_res.get("is_valid"):
                     print_success(f"Conceptual SVG {p_num} validation passed (Perfect) on attempt {attempt}.")
+                    if feedback: print_info(f"  [QA Feedback]: {feedback}")
                     final_con_svg = current_svg
                     break
                 elif val_res and val_res.get("is_acceptable"):
