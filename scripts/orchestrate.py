@@ -783,21 +783,46 @@ def main():
         plan_vars["custom_instruction"] = args.custom_instruction or ""
 
     feedback_history = []
+    acceptable_plan_data = None
+
     for attempt in range(args.plan_reworks + 1):
         if attempt > 0: print_info(f"Reworking Plan... (Attempt {attempt}/{args.plan_reworks})")
         
         plan_json = run_agent(cfg["agent"], plan_mode, plan_vars, retries=cfg["agent_execution_retries"], model_name=cfg.get("gemini_model"))
-        plan_data = parse_ai_json_output(plan_json, plan_mode)
+        current_plan_data = parse_ai_json_output(plan_json, plan_mode)
         
-        if plan_data and "pages" in plan_data and isinstance(plan_data["pages"], list) and len(plan_data["pages"]) > 0:
-            print_success("Plan generated successfully.")
+        if not current_plan_data or "pages" not in current_plan_data or not isinstance(current_plan_data["pages"], list) or len(current_plan_data["pages"]) == 0:
+            print_error(f"Plan generation failed on attempt {attempt}: Invalid format.", exit_code=None)
+            continue
+            
+        # Validate Plan (New Step)
+        val_vars = {
+            "source_file_path": str(source_path),
+            "plan_json": json.dumps(current_plan_data, ensure_ascii=False),
+            "custom_instruction": args.custom_instruction or ""
+        }
+        val_json = run_agent(cfg["agent"], "VALIDATE_PLAN", val_vars, retries=cfg["agent_execution_retries"], model_name=cfg.get("gemini_model"))
+        val_res = parse_ai_json_output(val_json, "VALIDATE_PLAN")
+        
+        feedback = val_res.get("feedback", "No feedback") if val_res else "Invalid validation response"
+        
+        if val_res and val_res.get("is_valid"):
+            print_success("Plan validation passed (Perfect).")
+            print_info(f"Plan validation feedback: {feedback}")
+            plan_data = current_plan_data
             break
-        
-        feedback = "The previous output was invalid. Please ensure you output a valid JSON object with a 'pages' key containing a list of page objects."
-        print_error(f"Plan validation failed on attempt {attempt}: Missing 'pages' list or invalid JSON.", exit_code=None)
-        
+        elif val_res and val_res.get("is_acceptable"):
+            print_success("Plan validation passed (Acceptable). Striving for perfection...")
+            if not acceptable_plan_data: acceptable_plan_data = current_plan_data
+            # Continue
+            
+        print_info(f"Plan validation feedback: {feedback}")
         feedback_history.append(f"Attempt {attempt+1} Feedback: {feedback}")
         plan_vars["rework_feedback"] = "\n\n".join(feedback_history)
+
+    if not plan_data and acceptable_plan_data:
+        print_info("Max retries reached. Using best acceptable Plan result.")
+        plan_data = acceptable_plan_data
 
     if not plan_data or "pages" not in plan_data:
         print_error("Failed to generate a valid plan after all retries.")
