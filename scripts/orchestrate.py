@@ -486,7 +486,7 @@ def get_config(args: argparse.Namespace) -> dict:
     cfg = yaml.safe_load(CONFIG_PATH.read_text(encoding="utf-8")) if CONFIG_PATH.exists() else {}
     # Get version from config or use default
     if 'version' not in cfg:
-        cfg['version'] = '1.6.0'
+        cfg['version'] = '3.7.0'
     if 'plan_max_reworks' not in cfg:
         cfg['plan_max_reworks'] = 3
     # Add defaults for new SVG settings

@@ -75,7 +75,7 @@ class App(tk.Tk):
         li_link.bind("<Button-1>", lambda e: self.open_link("https://www.linkedin.com/in/chiakai-chang-htciu"))
         mail_link = tk.Label(info_line1, text="Email", fg="blue", cursor="hand2", font=hyperlink_font, bg=footer_frame["bg"]); mail_link.pack(side="left", padx=5)
         mail_link.bind("<Button-1>", lambda e: self.open_link("mailto:lotifv@gmail.com"))
-        tk.Label(footer_frame, text="Copyright © 2025 Chiakai Chang. All Rights Reserved.", font=("Arial", 8), bg=footer_frame["bg"]).pack(fill="x", pady=(5,0))
+        tk.Label(footer_frame, text="Copyright © 2026 Chiakai Chang. All Rights Reserved.", font=("Arial", 8), bg=footer_frame["bg"]).pack(fill="x", pady=(5,0))
 
         # --- Populate Main Frame ---
         # --- Mode Selection ---
@@ -198,7 +198,7 @@ class App(tk.Tk):
         tk.Label(rework_frame, text="規劃:").pack(side="left", padx=(0, 5))
         self.plan_reworks_spinbox = tk.Spinbox(rework_frame, from_=0, to=10, width=5, justify="center")
         self.plan_reworks_spinbox.pack(side="left", padx=(0, 15))
-        self.plan_reworks_spinbox.delete(0, "end"); self.plan_reworks_spinbox.insert(0, "3")
+        self.plan_reworks_spinbox.delete(0, "end"); self.plan_reworks_spinbox.insert(0, "6")
 
         tk.Label(rework_frame, text="簡報:").pack(side="left", padx=(0, 5))
         self.slide_reworks_spinbox = tk.Spinbox(rework_frame, from_=0, to=10, width=5, justify="center")
