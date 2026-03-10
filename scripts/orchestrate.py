@@ -314,7 +314,7 @@ def parse_ai_json_output(output: str, mode: str) -> dict | None:
 
 def get_config(args: argparse.Namespace) -> dict:
     cfg = yaml.safe_load(CONFIG_PATH.read_text(encoding="utf-8")) if CONFIG_PATH.exists() else {}
-    defaults = {'version': '3.7.0', 'plan_max_reworks': 3, 'slide_svg_max_reworks': 5, 'conceptual_svg_max_reworks': 5, 'agent_execution_retries': 3}
+    defaults = {'version': '3.9.0', 'plan_max_reworks': 3, 'slide_svg_max_reworks': 5, 'conceptual_svg_max_reworks': 5, 'agent_execution_retries': 3}
     for k, v in defaults.items():
         if k not in cfg: cfg[k] = v
     cfg.update({k: v for k, v in vars(args).items() if v is not None})
@@ -409,6 +409,7 @@ def main():
     parser.add_argument("--plan-from-slides")
     parser.add_argument("--gemini-model")
     parser.add_argument("--agent", default="gemini")
+    parser.add_argument("--analysis-reworks", type=int, default=3)
     parser.add_argument("--plan-reworks", type=int, default=3)
     parser.add_argument("--slide-reworks", type=int, default=5)
     parser.add_argument("--memo-reworks", type=int, default=5)
@@ -427,17 +428,39 @@ def main():
     # Phase 1: Analysis
     print_header("Phase 1: Analysis & Planning")
     analysis_vars = {"source_file_path": str(source_path), "custom_instruction": args.custom_instruction or "", "manual_title": args.manual_title or "", "manual_author": args.manual_author or "", "manual_url": args.manual_url or ""}
-    analysis_data = parse_ai_json_output(run_agent(cfg["agent"], "ANALYZE_SOURCE_DOCUMENT", analysis_vars, model_name=cfg.get("gemini_model")), "ANALYZE_SOURCE_DOCUMENT")
     
-    if not analysis_data:
-        print_error("Analysis failed. Falling back to defaults.")
-        analysis_data = {}
+    analysis_data, acceptable_analysis, analysis_feedback_history = {}, {}, []
+    for attempt in range(args.analysis_reworks + 1):
+        raw = run_agent(cfg["agent"], "ANALYZE_SOURCE_DOCUMENT", analysis_vars, retries=cfg["agent_execution_retries"], model_name=cfg.get("gemini_model"))
+        current_analysis = parse_ai_json_output(raw, "ANALYZE_SOURCE_DOCUMENT")
+        
+        if not current_analysis:
+            analysis_feedback_history.append(f"Attempt {attempt+1}: Failed to parse JSON output.")
+            analysis_vars["rework_feedback"] = "\n\n".join(analysis_feedback_history)
+            continue
 
-    project_title = analysis_data.get("project_title") or args.manual_title or "Untitled"
+        val_json = run_agent(cfg["agent"], "VALIDATE_ANALYSIS", {"analysis_data": json.dumps(current_analysis, ensure_ascii=False), "source_file_path": str(source_path)}, retries=cfg["agent_execution_retries"], model_name=cfg.get("gemini_model"))
+        val_res = parse_ai_json_output(val_json, "VALIDATE_ANALYSIS")
+        
+        if val_res and val_res.get("is_valid"):
+            analysis_data = current_analysis; break
+        elif val_res and val_res.get("is_acceptable"):
+            if not acceptable_analysis: acceptable_analysis = current_analysis
+        
+        feedback = val_res.get("feedback", "") if val_res else "Validation failed"
+        analysis_feedback_history.append(f"Attempt {attempt+1}: {feedback}")
+        analysis_vars["rework_feedback"] = "\n\n".join(analysis_feedback_history)
+
+    analysis_data = analysis_data or acceptable_analysis or current_analysis or {}
+
+    # Distinguish between display title and folder title
+    document_title = analysis_data.get("document_title") or args.manual_title or "Untitled"
+    project_folder_name = analysis_data.get("project_title") or sanitize_filename(document_title)[:30]
+    
     glossary = analysis_data.get("glossary") or []
     glossary_text = "\n".join([f"- {g['term']}: {g['translation'] or g['term']}" for g in glossary]) if glossary else "None"
 
-    safe_title = sanitize_filename(project_title)[:50]
+    safe_title = sanitize_filename(project_folder_name)[:50]
     existing_dirs = sorted(list(OUTPUT_ROOT.glob(f"*_{safe_title}")), reverse=True)
     output_dir = existing_dirs[0] if existing_dirs else OUTPUT_ROOT / f"{datetime.now().strftime('%Y%m%d_%H%M%S')}_{safe_title}"
     output_dir.mkdir(parents=True, exist_ok=True)
@@ -445,7 +468,18 @@ def main():
     slides_dir.mkdir(exist_ok=True); notes_dir.mkdir(exist_ok=True)
 
     if glossary: (output_dir / "glossary.json").write_text(json.dumps(glossary, indent=2, ensure_ascii=False), encoding="utf-8")
-    (output_dir / "overview.md").write_text(f"# {project_title}\n\nSummary: {analysis_data.get('summary')}\n", encoding="utf-8")
+    
+    # Write overview.md with proper formatting for build_guide.py
+    # Use document_title for the main display heading
+    overview_md = f"# {document_title}\n\n"
+    if analysis_data.get("document_authors"):
+        overview_md += f"**Author:** {analysis_data.get('document_authors')}\n"
+    if analysis_data.get("source_url"):
+        overview_md += f"**Source:** {analysis_data.get('source_url')}\n"
+    
+    overview_md += f"\n## Summary\n{analysis_data.get('summary') or 'No summary available.'}\n"
+    overview_md += f"\n## Overview\n{analysis_data.get('overview') or 'No overview available.'}\n"
+    (output_dir / "overview.md").write_text(overview_md, encoding="utf-8")
 
     # Phase 2: Planning
     print_header("Phase 2: Planning")
@@ -454,7 +488,29 @@ def main():
         plan_data = json.loads(plan_path.read_text(encoding="utf-8"))
     else:
         plan_vars = {"source_file_path": str(source_path), "glossary": glossary_text, "custom_instruction": args.custom_instruction or ""}
-        plan_data = parse_ai_json_output(run_agent(cfg["agent"], "PLAN", plan_vars, model_name=cfg.get("gemini_model")), "PLAN")
+        plan_data, acceptable_plan, plan_feedback_history = {}, {}, []
+        for attempt in range(args.plan_reworks + 1):
+            raw = run_agent(cfg["agent"], "PLAN", plan_vars, retries=cfg["agent_execution_retries"], model_name=cfg.get("gemini_model"))
+            current_plan = parse_ai_json_output(raw, "PLAN")
+            
+            if not current_plan:
+                plan_feedback_history.append(f"Attempt {attempt+1}: Failed to parse JSON output.")
+                plan_vars["rework_feedback"] = "\n\n".join(plan_feedback_history)
+                continue
+
+            val_json = run_agent(cfg["agent"], "VALIDATE_PLAN", {"plan_json": json.dumps(current_plan, ensure_ascii=False), "source_file_path": str(source_path)}, retries=cfg["agent_execution_retries"], model_name=cfg.get("gemini_model"))
+            val_res = parse_ai_json_output(val_json, "VALIDATE_PLAN")
+            
+            if val_res and val_res.get("is_valid"):
+                plan_data = current_plan; break
+            elif val_res and val_res.get("is_acceptable"):
+                if not acceptable_plan: acceptable_plan = current_plan
+            
+            feedback = val_res.get("feedback", "") if val_res else "Validation failed"
+            plan_feedback_history.append(f"Attempt {attempt+1}: {feedback}")
+            plan_vars["rework_feedback"] = "\n\n".join(plan_feedback_history)
+        
+        plan_data = plan_data or acceptable_plan or current_plan or {}
         if plan_data: plan_path.write_text(json.dumps(plan_data, indent=2, ensure_ascii=False), encoding="utf-8")
 
     if not plan_data: print_error("Planning failed.")
@@ -462,7 +518,30 @@ def main():
     # Phase 3: Deck
     print_header("Phase 3: Deck Generation")
     deck_vars = {"source_file_path": str(source_path), "plan_json": json.dumps(plan_data, ensure_ascii=False), "glossary": glossary_text}
-    deck_data = parse_ai_json_output(run_agent(cfg["agent"], "DECK", deck_vars, model_name=cfg.get("gemini_model")), "DECK")
+    
+    deck_data, acceptable_deck, deck_feedback_history = {}, {}, []
+    for attempt in range(args.slide_reworks + 1):
+        raw = run_agent(cfg["agent"], "DECK", deck_vars, retries=cfg["agent_execution_retries"], model_name=cfg.get("gemini_model"))
+        current_deck = parse_ai_json_output(raw, "DECK")
+        
+        if not (current_deck and current_deck.get("slides")):
+            deck_feedback_history.append(f"Attempt {attempt+1}: Failed to parse slides from JSON output.")
+            deck_vars["rework_feedback"] = "\n\n".join(deck_feedback_history)
+            continue
+
+        val_json = run_agent(cfg["agent"], "VALIDATE_DECK", {"deck_json": json.dumps(current_deck, ensure_ascii=False), "source_file_path": str(source_path)}, retries=cfg["agent_execution_retries"], model_name=cfg.get("gemini_model"))
+        val_res = parse_ai_json_output(val_json, "VALIDATE_DECK")
+        
+        if val_res and val_res.get("is_valid"):
+            deck_data = current_deck; break
+        elif val_res and val_res.get("is_acceptable"):
+            if not acceptable_deck: acceptable_deck = current_deck
+        
+        feedback = val_res.get("feedback", "") if val_res else "Validation failed"
+        deck_feedback_history.append(f"Attempt {attempt+1}: {feedback}")
+        deck_vars["rework_feedback"] = "\n\n".join(deck_feedback_history)
+
+    deck_data = deck_data or acceptable_deck or current_deck or {"slides": []}
     last_deck_content = deck_data.get("slides", [])
     
     full_slides_content = ""
