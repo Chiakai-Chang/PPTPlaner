@@ -36,8 +36,30 @@ def render_html(pages, templates_dir, project_info):
     template = env.get_template("guide.html.j2")
     return template.render(pages=pages, project_info=project_info)
 
+def render_markdown(pages, project_info):
+    md = f"# {project_info.get('title', 'Guide')}\n\n"
+    if project_info.get('author_info_text'):
+        md += f"{project_info.get('author_info_text')}\n"
+    if project_info.get('source_url'):
+        md += f"Source: [{project_info.get('source_url')}]({project_info.get('source_url')})\n"
+    
+    md += f"\n## Summary\n{project_info.get('summary', '')}\n"
+    
+    if project_info.get('overview_md'):
+        md += f"\n## Overview\n{project_info.get('overview_md')}\n"
+    
+    md += "\n---\n"
+    
+    for page in pages:
+        md += f"\n# Slide {page['id']}\n\n"
+        md += f"## Slide Content\n\n{page['slide_content_raw']}\n\n"
+        md += f"## Speaker Notes\n\n{page['note_content_raw']}\n\n"
+        md += "---\n"
+        
+    return md
+
 def main():
-    parser = argparse.ArgumentParser(description="Build HTML guide from slides and notes.")
+    parser = argparse.ArgumentParser(description="Build HTML and Markdown guide from slides and notes.")
     parser.add_argument("--output-dir", required=True, help="The unique output directory for the run.")
     parser.add_argument("--manual-source-url", help="Optional source URL to override or supplement overview.md")
     args = parser.parse_args()
@@ -46,18 +68,20 @@ def main():
         output_dir = Path(args.output_dir)
         slides_dir = output_dir / "slides"
         notes_dir = output_dir / "notes"
-        output_path = output_dir / "guide.html"
+        output_path_html = output_dir / "guide.html"
+        output_path_md = output_dir / "guide.md"
         templates_dir = Path(__file__).resolve().parents[1] / "templates"
-        md = MarkdownIt('commonmark', {'html': True})
+        md_parser = MarkdownIt('commonmark', {'html': True})
 
-        print(f"Building guide for directory: {output_dir}", flush=True)
+        print(f"Building guides for directory: {output_dir}", flush=True)
 
         # --- Project Info ---
         overview_path = output_dir / "overview.md"
         project_info = {
             "title": output_dir.name.split('_', 1)[-1].replace('_', ' '),
-            "summary": "This guide displays the generated slides and notes side-by-side.",
-            "overview_html": ""
+            "summary": "This guide displays the generated slides and notes.",
+            "overview_html": "",
+            "overview_md": ""
         }
         
         if overview_path.exists():
@@ -83,28 +107,26 @@ def main():
             # 4. Parse Summary (Flexible Header)
             summary_match = re.search(r"##\s+(?:Summary|摘要).*?\n(.*?)(?=\n##|\Z)", overview_content, re.DOTALL | re.IGNORECASE)
             if summary_match:
-                # Remove the header line itself if captured (though regex above captures group 1 which is content)
-                # Just strip whitespace
                 project_info["summary"] = summary_match.group(1).strip()
 
             # 5. Parse Overview (Flexible Header)
             overview_match = re.search(r"##\s+(?:Overview|總覽).*?\n(.*?)(?=\n##|\Z)", overview_content, re.DOTALL | re.IGNORECASE)
             if overview_match:
-                overview_md = overview_match.group(1).strip()
-                # Remove the header if it somehow got included (it shouldn't with the regex above, but safety first)
-                overview_md = re.sub(r"^##\s+(?:Overview|總覽).*?\n", "", overview_md, flags=re.IGNORECASE).strip()
-                project_info["overview_html"] = md.render(overview_md)
+                overview_md_content = overview_match.group(1).strip()
+                project_info["overview_md"] = overview_md_content
+                project_info["overview_html"] = md_parser.render(overview_md_content)
 
             # Construct Author Text
             author_text = f"By {authors}" if authors and authors != 'N/A' else ""
-            
             project_info["author_info_text"] = author_text
 
         if not slides_dir.exists():
             print(f"Build skipped: '{slides_dir.name}' directory not found in {output_dir}.", flush=True)
             if overview_path.exists():
                 html_content = render_html([], templates_dir, project_info)
-                output_path.write_text(html_content, encoding="utf-8")
+                output_path_html.write_text(html_content, encoding="utf-8")
+                md_content = render_markdown([], project_info)
+                output_path_md.write_text(md_content, encoding="utf-8")
             sys.exit(0)
 
         slide_files = sorted([f for f in os.listdir(slides_dir) if f.endswith('.md')])
@@ -125,21 +147,16 @@ def main():
 
                 slide_visual_content = None
                 
-                # Priority 1: SVG
                 if slide_svg_file.exists():
                     svg_text = slide_svg_file.read_text(encoding="utf-8")
-                    # Remove width and height attributes to make it responsive
                     svg_text = re.sub(r'\s(width|height)="[^"]*"', '', svg_text)
                     slide_visual_content = svg_text
-                
-                # Priority 2: Raster Images (PNG, JPG, JPEG, WEBP)
                 else:
                     for ext in ['.png', '.jpg', '.jpeg', '.webp']:
                         img_file = slides_dir / f"slide_{slide_id}{ext}"
                         if img_file.exists():
                             mime_type, _ = mimetypes.guess_type(img_file)
                             if not mime_type: mime_type = f"image/{ext.replace('.', '')}"
-                            
                             with open(img_file, "rb") as f:
                                 b64_data = base64.b64encode(f.read()).decode('utf-8')
                                 slide_visual_content = f'<img src="data:{mime_type};base64,{b64_data}" style="width:100%; height:auto;" alt="Slide {slide_id}">'
@@ -147,28 +164,25 @@ def main():
 
                 conceptual_svg_content = None
                 if conceptual_svg_file.exists():
-                    # For conceptual SVGs, we preserve the attributes so they can render with their natural aspect ratio.
                     conceptual_svg_content = conceptual_svg_file.read_text(encoding="utf-8")
 
                 slide_content_raw = slide_path.read_text(encoding="utf-8") if slide_path.exists() else "[Slide not found]"
-                slide_content_html = md.render(slide_content_raw)
+                slide_content_html = md_parser.render(slide_content_raw)
 
                 raw_note_content = note_path.read_text(encoding="utf-8") if note_path.exists() else "[Note not found]"
                 
-                # --- Sanitize Note Content (Remove Markdown Fences) ---
-                # Remove leading ```markdown or ```
-                raw_note_content = re.sub(r"^```(?:markdown)?\s*", "", raw_note_content, flags=re.IGNORECASE)
-                # Remove trailing ```
-                raw_note_content = re.sub(r"\s*```\s*$", "", raw_note_content)
-                # ------------------------------------------------------
-
-                html_note_content = md.render(raw_note_content)
+                # Sanitize Note Content for HTML
+                clean_note_content = re.sub(r"^```(?:markdown)?\s*", "", raw_note_content, flags=re.IGNORECASE)
+                clean_note_content = re.sub(r"\s*```\s*$", "", clean_note_content)
+                html_note_content = md_parser.render(clean_note_content)
 
                 pages.append({
                     "id": slide_id,
+                    "slide_content_raw": slide_content_raw,
                     "slide_content_html": slide_content_html,
+                    "note_content_raw": clean_note_content,
                     "note_content_html": html_note_content,
-                    "slide_svg_content": slide_visual_content, # Renamed variable logic but kept key for template compatibility
+                    "slide_svg_content": slide_visual_content,
                     "conceptual_svg_content": conceptual_svg_content,
                 })
             except IndexError:
@@ -178,8 +192,17 @@ def main():
             print("[Warning] No pages or overview were processed to build the guide.", flush=True)
             return
 
+        # Render HTML
         html_content = render_html(pages, templates_dir, project_info)
-        output_path.write_text(html_content, encoding="utf-8")
+        output_path_html.write_text(html_content, encoding="utf-8")
+        
+        # Render Markdown
+        md_content = render_markdown(pages, project_info)
+        output_path_md.write_text(md_content, encoding="utf-8")
+
+    except Exception as e:
+        print(f"[ERROR] An unexpected error occurred in build_guide.py: {e}", file=sys.stderr, flush=True)
+        sys.exit(1)
 
     except Exception as e:
         print(f"[ERROR] An unexpected error occurred in build_guide.py: {e}", file=sys.stderr, flush=True)

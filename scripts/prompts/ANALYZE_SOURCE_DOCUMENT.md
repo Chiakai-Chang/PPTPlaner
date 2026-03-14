@@ -22,24 +22,32 @@
     *   這份清單將作為整份簡報生成過程中的「統一語彙表」，確保後續頁面風格一致。
 
 **生成高品質摘要 (Generate High-Quality Summaries)**：
-...
+*   你必須使用**台灣繁體中文 (Traditional Chinese, Taiwanese usage)** 來撰寫 `summary` 與 `overview`。
+*   `summary`: 一段精簡、吸引人的摘要，作為專案的「電梯簡報」。
+    *   **長度限制**：必須控制在 **50 至 100 個中文字**之間。
+    *   **用途**：這會顯示在網頁標題下方的副標題位置（限 3 行），因此請確保每一句話都充滿資訊量且不贅述。
+*   `overview`: 提供比 `summary` 更深入、更具技術性的總覽。
+    *   **長度限制**：必須控制在 **250 至 400 個中文字**之間。
+    *   **內容要求**：應涵蓋研究背景、核心問題、提出的方法/技術、關鍵實驗結果以及其在實際應用（如執法）中的意義。
+
 **輸出格式**：
 你**必須**嚴格遵循純 JSON 格式，不得包含任何對話文字。如果某些選填欄位在文件中找不到且使用者未提供，請將其值設為 `null`。
+**語言要求**：除 `project_title` 和 `glossary` 中的 `term` 外，其餘所有自然語言描述（如 `summary`, `overview`, `document_title` (若合適), `publication_info`）皆應使用**台灣繁體中文**。
 **重要提示 (CRITICAL)**：請務必確保輸出的 JSON 是有效的。字串值內的所有雙引號 (`"`) 必須被轉義為 `\"`。
 ```json
 {
-  "document_title": "The Main Title",
-  "document_subtitle": "Subtitle",
-  "document_authors": "Authors",
-  "publication_info": "Pub Info",
+  "document_title": "文件完整標題 (中文或原文)",
+  "document_subtitle": "副標題 (中文或原文)",
+  "document_authors": "作者清單",
+  "publication_info": "發布資訊",
   "source_url": "https://example.com/paper.pdf",
   "project_title": "Project_Title",
   "glossary": [
     {"term": "Pig Butchering", "translation": "殺豬盤"},
-    {"term": "LLM", "translation": "LLM"}
+    {"term": "LLM", "translation": "大型語言模型"}
   ],
-  "summary": "Summary text...",
-  "overview": "Overview text..."
+  "summary": "台灣繁體中文摘要 (50-100字)...",
+  "overview": "台灣繁體中文總覽 (250-400字)..."
 }
 ```
 *   `source_file_path`: 原始全文檔案路徑。
