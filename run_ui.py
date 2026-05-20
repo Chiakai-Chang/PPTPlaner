@@ -1145,7 +1145,10 @@ class App(tk.Tk):
                 command.append("--no-svg")
             if custom_instruction: command.extend(["--custom-instruction", custom_instruction])
             if slides_file: command.extend(["--plan-from-slides", slides_file])
-            if self.current_gemini_model: command.extend(["--gemini-model", self.current_gemini_model])
+            # Only pass model for non-OpenAI-compatible agents
+            # OpenAI-compatible agents use detected model from endpoint
+            if self.current_gemini_model and self.agent_type_var.get() not in ["openai-compatible", "ollama", "llamacpp"]:
+                command.extend(["--gemini-model", self.current_gemini_model])
             command.extend(["--agent", self.agent_type_var.get()])
 
             
@@ -1185,7 +1188,10 @@ class App(tk.Tk):
                 return
             
             command = [sys.executable, resume_script, "--output-dir", resume_output_dir]
-            if self.current_gemini_model: command.extend(["--gemini-model", self.current_gemini_model])
+            # Only pass model for non-OpenAI-compatible agents
+            # OpenAI-compatible agents use detected model from endpoint
+            if self.current_gemini_model and self.agent_type_var.get() not in ["openai-compatible", "ollama", "llamacpp"]:
+                command.extend(["--gemini-model", self.current_gemini_model])
             command.extend(["--agent", self.agent_type_var.get()])
 
         

@@ -9,11 +9,6 @@ ROOT = Path(__file__).resolve().parents[1]
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
-# Ensure project root is in Python path for agent imports
-ROOT = Path(__file__).resolve().parents[1]
-if str(ROOT) not in sys.path:
-    sys.path.insert(0, str(ROOT))
-
 # Ensure UTF-8 output on Windows
 if sys.platform == 'win32':
     try:
@@ -316,9 +311,9 @@ def run_agent(agent: str, mode: str, vars_map: dict, retries: int = 3, delay: in
 
     attempt = 0
     while attempt < retries:
-        # Log agent call with timing
+        # Log agent call with timing - use effective_model, not original model_name
         timing = agent_logger.log_agent_call(
-            agent_instance.NAME, mode, model_name, attempt + 1, retries
+            agent_instance.NAME, mode, effective_model, attempt + 1, retries
         )
         
         print_info(f"Calling {agent_instance.NAME} for {mode}... (Attempt {attempt + 1}/{retries})")
