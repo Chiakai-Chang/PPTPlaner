@@ -1,2 +1,39 @@
-nul
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+
+# Virtual environment
+.env
+.venv
+env/
+venv/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# Test coverage
+htmlcov/
+.coverage
+.coverage.*
+
+# Build
+build/
+dist/
+*.egg-info/
+
+# Project-specific
 OmniHeal/
+nul
+*.log
+error.log
+logs/
+output/
+
+# Runtime
+.runtime_config.json
+.pause_lock
