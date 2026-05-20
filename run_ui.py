@@ -170,6 +170,7 @@ class App(tk.Tk):
         
         # Update status when agent changes
         self.agent_type_var.trace_add("write", self._update_agent_status)
+        self.agent_type_var.trace_add("write", self._update_models_for_agent)
         
         # --- New Generation Controls ---
         self.new_generation_controls_frame = tk.Frame(main_frame)
@@ -282,6 +283,25 @@ class App(tk.Tk):
             # Add tooltip with hint
             if "hint" in status:
                 self.agent_status_label.bind("<Enter>", lambda e: self._show_tooltip(status["hint"]))
+    
+    def _update_models_for_agent(self, *args):
+        """Update model dropdown based on selected agent."""
+        from agents import AgentFactory
+        
+        agent_name = self.agent_type_var.get()
+        try:
+            agent_config = {"agent": agent_name}
+            agent = AgentFactory.create(agent_config)
+            models = agent.get_models()
+            
+            # Update all model comboboxes
+            for combobox in [self.initial_model_combobox, self.resume_model_combobox]:
+                combobox.config(values=models)
+                if models:
+                    combobox.set(models[0])  # Select first model by default
+        except Exception:
+            # Fallback to empty list if agent not available
+            pass
     
     def _show_tooltip(self, text):
         """Show simple tooltip message."""
