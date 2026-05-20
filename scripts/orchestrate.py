@@ -224,27 +224,58 @@ def run_agent(agent: str, mode: str, vars_map: dict, retries: int = 3, delay: in
     detected_api_base = None
     detected_model = None
     if agent.lower().strip() in ["openai-compatible", "ollama", "llamacpp"]:
-        from agents.model_detector import default_detector
-        try:
-            endpoints = default_detector.detect_all()
-            available = [e for e in endpoints if e.available]
-            if available:
-                first_endpoint = available[0]
-                detected_api_base = first_endpoint.url
+        from agents.model_detector import ModelDetector, default_detector
+        
+        # Get custom endpoint from config if specified
+        custom_endpoint = config_data.get("agent_config", {}).get("api_base")
+        
+        if custom_endpoint:
+            print_info(f"🔹 Using configured endpoint: {custom_endpoint}")
+            # Create a detector for just this endpoint
+            detector = ModelDetector(endpoints=[custom_endpoint], verbose=True)
+            result = detector.detect_endpoint(custom_endpoint.rstrip('/'))
+            
+            if result.available:
+                detected_api_base = custom_endpoint
                 if "/v1" not in detected_api_base:
                     detected_api_base += "/v1"
-                print_info(f"🔹 Auto-detected {first_endpoint.type} at {detected_api_base}")
+                print_info(f"✅ Configured endpoint is valid ({result.type})")
                 
-                if first_endpoint.models:
-                    detected_model = first_endpoint.models[0].name
-                    print_info(f"🔹 Auto-detected model: {detected_model}")
-        except Exception as e:
-            print_warning(f"⚠️ Auto-detection failed: {e}")
+                if result.models:
+                    detected_model = result.models[0].name
+                    print_info(f"🔹 Using model from config: {detected_model}")
+            else:
+                print_warning(f"⚠️ Configured endpoint failed: {result.error}")
+                print_info(f"🔹 Falling back to auto-detection...")
+                detected_api_base = None
+                detected_model = None
+        
+        # Auto-detect if no custom endpoint or custom failed
+        if not detected_api_base:
+            print_info(f"🔹 Scanning for local AI servers...")
+            try:
+                endpoints = default_detector.detect_all()
+                available = [e for e in endpoints if e.available]
+                if available:
+                    first_endpoint = available[0]
+                    detected_api_base = first_endpoint.url
+                    if "/v1" not in detected_api_base:
+                        detected_api_base += "/v1"
+                    print_info(f"🔹 Auto-detected {first_endpoint.type} at {detected_api_base}")
+                    
+                    if first_endpoint.models:
+                        detected_model = first_endpoint.models[0].name
+                        print_info(f"🔹 Auto-detected model: {detected_model}")
+                else:
+                    print_warning(f"⚠️ No local AI servers found")
+            except Exception as e:
+                print_warning(f"⚠️ Auto-detection failed: {e}")
     
     # Get API base from config or detection
     api_base = config_data.get("agent_config", {}).get("api_base") or detected_api_base
     if not api_base:
         api_base = "http://localhost:11434/v1"  # Default Ollama
+        print_warning(f"⚠️ Using default Ollama endpoint: {api_base}")
     
     # Determine effective model based on agent type
     effective_model = model_name
@@ -520,6 +551,7 @@ def main():
     parser.add_argument("--custom-instruction")
     parser.add_argument("--plan-from-slides")
     parser.add_argument("--gemini-model")
+    parser.add_argument("--api-base", dest="api_base", help="API endpoint for OpenAI-compatible agents")
     parser.add_argument("--agent", default="gemini")
     parser.add_argument("--analysis-reworks", type=int, default=3)
     parser.add_argument("--plan-reworks", type=int, default=3)

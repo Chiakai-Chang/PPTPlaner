@@ -1149,6 +1149,12 @@ class App(tk.Tk):
             # OpenAI-compatible agents use detected model from endpoint
             if self.current_gemini_model and self.agent_type_var.get() not in ["openai-compatible", "ollama", "llamacpp"]:
                 command.extend(["--gemini-model", self.current_gemini_model])
+            
+            # Pass API base for OpenAI-compatible agents if configured
+            api_base = self.api_base_var.get().strip() if hasattr(self, 'api_base_var') else ""
+            if api_base and self.agent_type_var.get() in ["openai-compatible", "ollama", "llamacpp"]:
+                command.extend(["--api-base", api_base])
+            
             command.extend(["--agent", self.agent_type_var.get()])
 
             
@@ -1192,6 +1198,11 @@ class App(tk.Tk):
             # OpenAI-compatible agents use detected model from endpoint
             if self.current_gemini_model and self.agent_type_var.get() not in ["openai-compatible", "ollama", "llamacpp"]:
                 command.extend(["--gemini-model", self.current_gemini_model])
+            
+            # Pass API base for OpenAI-compatible agents if configured
+            api_base = self.api_base_var.get().strip() if hasattr(self, 'api_base_var') else ""
+            if api_base and self.agent_type_var.get() in ["openai-compatible", "ollama", "llamacpp"]:
+                command.extend(["--api-base", api_base])
             command.extend(["--agent", self.agent_type_var.get()])
 
         
