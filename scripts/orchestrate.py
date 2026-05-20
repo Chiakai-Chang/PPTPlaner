@@ -187,14 +187,35 @@ def wait_for_user_action() -> str | None:
     return None
 
 def run_agent(agent: str, mode: str, vars_map: dict, retries: int = 3, delay: int = 5, model_name: str | None = None) -> str:
-    agent_cmd, found_agent_path = agent.lower().strip(), None
-    scripts_path_from_env = os.environ.get("PPTPLANER_SCRIPTS_PATH")
-    if scripts_path_from_env:
-        for ext in [".exe", ".cmd", ".bat", ""]:
-            path = os.path.join(scripts_path_from_env, f"{agent_cmd}{ext}")
-            if os.path.exists(path): found_agent_path = path; break
-    if not found_agent_path: found_agent_path = shutil.which(agent_cmd)
-    if not found_agent_path: print_error(f"指令 '{agent_cmd}' 不存在。")
+    """Execute agent with given prompt and mode.
+    
+    Supports both CLI-based agents (antigravity, claude) and API-based agents
+    (openai-compatible, openai).
+    
+    Backward compatible with gemini CLI via automatic mapping.
+    """
+    from agents import AgentFactory
+    from agents.exceptions import AgentAuthenticationError, AgentQuotaExceededError
+    
+    # Backward compatibility: map "gemini" to "antigravity"
+    if agent.lower().strip() == "gemini":
+        print_info("⚠️  Gemini CLI is deprecated. Using Antigravity CLI.")
+        agent = "antigravity"
+    
+    # Build agent config
+    agent_config = {
+        "agent": agent.lower().strip(),
+        "agent_config": {
+            "model": model_name
+        }
+    }
+    
+    # Create agent instance
+    try:
+        agent_instance = AgentFactory.create(agent_config)
+    except Exception as e:
+        print_error(f"Failed to create agent '{agent}': {e}")
+        return ""
 
     instructions = parse_agent_specs().get(mode)
     if not instructions: print_error(f"在 AGENTS.md 中找不到模式 '{mode}'。")
@@ -228,35 +249,37 @@ def run_agent(agent: str, mode: str, vars_map: dict, retries: int = 3, delay: in
     prompt_parts.append("Generate your response. Output ONLY the content required (e.g., pure JSON, pure Markdown). No conversational text.")
     final_prompt = "\n".join(prompt_parts)
 
-    current_model_name = model_name
     attempt = 0
     while attempt < retries:
-        cmd = [found_agent_path]
-        if current_model_name: cmd.extend(["-m", current_model_name])
-        if mode in ["PLAN", "PLAN_FROM_SLIDES", "ANALYZE_SOURCE_DOCUMENT", "VALIDATE_ANALYSIS", "VALIDATE_MEMO", "DECK", "VALIDATE_DECK", "VALIDATE_SLIDE_SVG", "VALIDATE_CONCEPTUAL_SVG"]:
-            cmd.extend(["--output-format", "json"])
-
-        print_info(f"Calling {agent_cmd.capitalize()} for {mode}... (Attempt {attempt + 1}/{retries})")
+        print_info(f"Calling {agent_instance.NAME} for {mode}... (Attempt {attempt + 1}/{retries})")
         rlog_data(f"Agent Inputs ({mode})", log_inputs)
 
         try:
-            result = run_command(cmd, input_text=final_prompt)
-            output = result.stdout.strip()
+            output = agent_instance.execute(
+                prompt=final_prompt,
+                mode=mode,
+                max_retries=1,  # We handle retries here
+                retry_delay=delay
+            )
+            
             rlog_block(f"Agent Raw Output ({mode})", output)
             if output: return output
             attempt += 1
-        except subprocess.CalledProcessError as e:
-            stderr_lower = e.stderr.lower()
-            is_auth_error = "authentication" in stderr_lower or "login required" in stderr_lower
-            is_quota_error = "exhausted" in stderr_lower or "quota" in stderr_lower
+        except Exception as e:
+            print_error(f"Agent execution failed: {str(e)}", exit_code=None)
             
-            if is_auth_error: print_error("認證失敗或過期。", exit_code=None)
-            elif is_quota_error: print_error("API quota 已用盡。", exit_code=None)
-            else: print_error(f"指令執行失敗: {e.stderr.strip()}", exit_code=None)
-
+            # Check if it's an authentication or quota error
+            error_str = str(e).lower()
+            if "authentication" in error_str or "login required" in error_str:
+                print_error("認證失敗或過期。", exit_code=None)
+            elif "quota" in error_str or "exhausted" in error_str:
+                print_error("API quota 已用盡。", exit_code=None)
+            
             new_model = wait_for_user_action()
-            if new_model: current_model_name = new_model
-            if is_auth_error or is_quota_error or new_model: continue
+            if new_model:
+                agent_config["agent_config"]["model"] = new_model
+                agent_instance = AgentFactory.create(agent_config)
+            
             attempt += 1
 
         if attempt < retries: time.sleep(delay)
