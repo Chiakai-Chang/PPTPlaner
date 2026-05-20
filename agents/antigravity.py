@@ -112,12 +112,25 @@ class AntigravityAdapter(AgentInterface):
     def is_available(self) -> bool:
         """Check if Antigravity CLI is available."""
         cmd = self.command_override or self.COMMAND
-        return os.path.exists(cmd) or subprocess.run(
+        
+        # Try direct path
+        if os.path.exists(cmd):
+            return True
+        
+        # Try finding in PATH
+        result = subprocess.run(
             ["where", cmd] if os.name == "nt" else ["which", cmd],
             capture_output=True
-        ).returncode == 0
+        )
+        
+        return result.returncode == 0
+    
+    def get_installation_hint(self) -> str:
+        """Return installation instructions."""
+        return "Install Antigravity CLI: npm install -g @google/antigravity-cli"
 
 
 # Auto-register
 from .registry import AgentRegistry
 AgentRegistry().register("antigravity", AntigravityAdapter)
+AgentRegistry().register("agy", AntigravityAdapter)  # Alias

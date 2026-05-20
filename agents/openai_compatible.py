@@ -155,8 +155,14 @@ class OpenAICompatibleAdapter(AgentInterface):
                 return response.status == 200
         except Exception:
             return False
+    
+    def get_installation_hint(self) -> str:
+        """Return installation instructions."""
+        return "Install Ollama: https://ollama.ai/ or run llama.cpp server"
 
 
 # Auto-register
 from .registry import AgentRegistry
 AgentRegistry().register("openai-compatible", OpenAICompatibleAdapter)
+AgentRegistry().register("ollama", OpenAICompatibleAdapter)  # Alias
+AgentRegistry().register("llamacpp", OpenAICompatibleAdapter)  # Alias

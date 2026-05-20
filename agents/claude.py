@@ -114,8 +114,13 @@ class ClaudeCodeAdapter(AgentInterface):
             ["where", cmd] if os.name == "nt" else ["which", cmd],
             capture_output=True
         ).returncode == 0
+    
+    def get_installation_hint(self) -> str:
+        """Return installation instructions."""
+        return "Install Claude Code: npm install -g @anthropic-ai/claude-code"
 
 
 # Auto-register
 from .registry import AgentRegistry
 AgentRegistry().register("claude", ClaudeCodeAdapter)
+AgentRegistry().register("claude-code", ClaudeCodeAdapter)  # Alias
