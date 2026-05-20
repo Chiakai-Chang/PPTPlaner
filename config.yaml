@@ -11,8 +11,9 @@ version: 3.9.1 # 專案版本號
 source_file: "source/Chapter9.md"         # 要處理的原始文檔（可改為 Thesis.md、Report.md 等）
 
 # ⚠️ IMPORTANT: Gemini CLI deprecated June 18, 2026. Migrate to antigravity or other agents.
-# Supported agents: gemini, antigravity, claude, codex, ollama, openai
-agent: "gemini"                     # 使用的 CLI Agent（gemini / antigravity / claude / codex / ollama）
+# Supported agents: gemini, antigravity, claude, openai-compatible, openai
+# Note: Gemini CLI is deprecated (June 18, 2026). Use antigravity.
+agent: "antigravity"                     # 使用的 CLI Agent（gemini / antigravity / claude / codex / ollama）
 
 # Agent-specific configuration
 agent_config:

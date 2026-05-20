@@ -20,6 +20,8 @@ class App(tk.Tk):
     def __init__(self, available_models):
         super().__init__()
         self.available_gemini_models = available_models
+        # Agent types supported
+        self.agent_types = ["antigravity", "claude", "openai-compatible", "openai"]
         
         # Load version from config.yaml
         config_path = Path(__file__).resolve().parents[0] / "config.yaml"
@@ -154,9 +156,17 @@ class App(tk.Tk):
         tk.Button(ei_bottom_frame, text="升級舊版 HTML", command=self.update_legacy_html, font=("Arial", 10), bg="#e0f0e0").pack(side="right", padx=5)
 
 
+        # --- Agent Selection ---
+        agent_selection_frame = tk.Frame(self.new_generation_controls_frame)
+        agent_selection_frame.grid(row=0, column=0, columnspan=3, sticky="w", pady=(0, 5))
+        tk.Label(agent_selection_frame, text="AI Agent:").pack(side="left", padx=(0, 10))
+        self.agent_type_var = tk.StringVar(value="antigravity")
+        agent_combobox = ttk.Combobox(agent_selection_frame, textvariable=self.agent_type_var, values=self.agent_types, state="readonly", width=20)
+        agent_combobox.pack(side="left")
+        
         # --- New Generation Controls ---
         self.new_generation_controls_frame = tk.Frame(main_frame)
-        tk.Label(self.new_generation_controls_frame, text="原文書檔案 (必要):").grid(row=0, column=0, sticky="w", pady=2)
+        tk.Label(self.new_generation_controls_frame, text="原文書檔案 (必要):").grid(row=1, column=0, sticky="w", pady=2)
         tk.Entry(self.new_generation_controls_frame, textvariable=self.source_file_path, width=80).grid(row=1, column=0, padx=(0, 5), columnspan=2, sticky="ew")
         tk.Button(self.new_generation_controls_frame, text="瀏覽...", command=self.browse_source_file).grid(row=1, column=2)
 
@@ -927,6 +937,7 @@ class App(tk.Tk):
             if custom_instruction: command.extend(["--custom-instruction", custom_instruction])
             if slides_file: command.extend(["--plan-from-slides", slides_file])
             if self.current_gemini_model: command.extend(["--gemini-model", self.current_gemini_model])
+            command.extend(["--agent", self.agent_type_var.get()])
 
             
             # Add rework counts if they are valid integers
@@ -966,6 +977,7 @@ class App(tk.Tk):
             
             command = [sys.executable, resume_script, "--output-dir", resume_output_dir]
             if self.current_gemini_model: command.extend(["--gemini-model", self.current_gemini_model])
+            command.extend(["--agent", self.agent_type_var.get()])
 
         
         if not command:
