@@ -246,15 +246,34 @@ def run_agent(agent: str, mode: str, vars_map: dict, retries: int = 3, delay: in
     if not api_base:
         api_base = "http://localhost:11434/v1"  # Default Ollama
     
-    # For OpenAI-compatible agents, use detected model or let adapter handle it
+    # Determine effective model based on agent type
     effective_model = model_name
-    if agent.lower().strip() in ["openai-compatible", "ollama", "llamacpp"]:
+    
+    # CLI agents: Only use model_name if it's valid for this agent
+    if agent.lower().strip() in ["antigravity", "claude"]:
+        # CLI agents have their own default models
+        # Don't pass gemini model names to claude, and vice versa
+        if model_name:
+            if agent.lower().strip() == "claude" and "gemini" in model_name.lower():
+                print_info(f"⚠️ Ignoring gemini model name for Claude, using default")
+                effective_model = None
+            elif agent.lower().strip() == "antigravity" and "claude" in model_name.lower():
+                print_info(f"⚠️ Ignoring claude model name for Antigravity, using default")
+                effective_model = None
+        else:
+            print_info(f"🔹 Using {agent} default model")
+    
+    # OpenAI-compatible agents: Use detected model or let adapter handle it
+    elif agent.lower().strip() in ["openai-compatible", "ollama", "llamacpp"]:
         if detected_model:
             effective_model = detected_model
             print_info(f"🔹 Using detected model: {detected_model}")
         elif model_name and "gemini" in model_name.lower():
-            # Don't use gemini model names for non-Gemini agents
+            # Don't use gemini model names for local models
             print_info(f"⚠️ Ignoring gemini model name, will use detected model")
+            effective_model = None
+        elif model_name and "claude" in model_name.lower():
+            print_info(f"⚠️ Ignoring claude model name for local model")
             effective_model = None
     
     # Build agent config
@@ -267,7 +286,7 @@ def run_agent(agent: str, mode: str, vars_map: dict, retries: int = 3, delay: in
         }
     }
     
-    print_info(f"🔹 Agent config: model={effective_model}, api_base={api_base}")
+    print_info(f"🔹 Agent config: model={effective_model or 'default'}, api_base={api_base}"), 
     
     # Create agent instance
     try:
