@@ -12,6 +12,8 @@ This is NOT the same as the OpenAI direct API adapter.
 """
 import json
 import logging
+import socket
+import time
 from typing import Optional, List, Dict, Any
 from .base import AgentInterface
 from .exceptions import AgentExecutionError, AgentAuthenticationError
@@ -89,6 +91,8 @@ class OpenAICompatibleAdapter(AgentInterface):
         logger.info(f"🔹 [{self.NAME}] Calling {mode} (model={actual_model}, endpoint={self.api_base})")
         
         attempt = 0
+        last_error = None
+        
         while attempt < max_retries:
             try:
                 logger.info(f"  ℹ Calling {self.NAME} for {mode}... (Attempt {attempt + 1}/{max_retries})")
@@ -100,36 +104,62 @@ class OpenAICompatibleAdapter(AgentInterface):
                     method='POST'
                 )
                 
-                with urllib.request.urlopen(req, timeout=120) as response:
+                # Local models need much longer timeout
+                # Check if this is a local endpoint
+                is_local = 'localhost' in self.api_base or '127.0.0.1' in self.api_base
+                request_timeout = 600 if is_local else 120  # 10 minutes for local, 2 minutes for cloud
+                
+                logger.info(f"  ℹ Request timeout: {request_timeout}s ({'local' if is_local else 'cloud'})")
+                
+                # Add progress logging for long-running requests
+                if is_local:
+                    logger.info(f"  ℹ Waiting for local model response... (this may take several minutes)")
+                
+                with urllib.request.urlopen(req, timeout=request_timeout) as response:
                     result = json.loads(response.read().decode('utf-8'))
                     content = result["choices"][0]["message"]["content"]
-                    logger.info(f"  ✅ [{self.NAME}] {mode} completed ({len(content)} tokens)")
+                    logger.info(f"  ✅ [{self.NAME}] {mode} completed ({len(content)} characters)")
                     return content
                 
             except urllib.error.HTTPError as e:
+                last_error = e
                 if e.code == 401:
                     logger.error(f"  ❌ Authentication failed for {self.api_base}")
                     raise AgentAuthenticationError("Authentication failed", self.NAME)
                 elif e.code == 429:
-                    logger.warning(f"  ⚠️ Rate limited, retrying in {retry_delay}s...")
-                    attempt += 1
-                    if attempt < max_retries:
-                        time.sleep(retry_delay)
-                    continue
+                    logger.warning(f"  ⚠️ Rate limited (429), retrying in {retry_delay}s...")
                 else:
                     logger.warning(f"  ⚠️ HTTP {e.code}: {e.reason}")
-                    attempt += 1
+                
+            except TimeoutError as e:
+                last_error = e
+                logger.warning(f"  ⚠️ Request timed out after {request_timeout}s")
+                logger.warning(f"  ℹ Local models may need more time. Retrying...")
+                
+            except socket.timeout as e:
+                last_error = e
+                logger.warning(f"  ⚠️ Socket timeout: {str(e)}")
+                logger.warning(f"  ℹ Local models may need more time. Retrying...")
+                
             except Exception as e:
-                logger.warning(f"  ⚠️ Request failed: {str(e)}")
-                attempt += 1
+                last_error = e
+                error_str = str(e).lower()
+                if 'timed out' in error_str or 'timeout' in error_str:
+                    logger.warning(f"  ⚠️ Timeout error: {str(e)}")
+                    logger.warning(f"  ℹ Local models may need more time. Retrying...")
+                else:
+                    logger.warning(f"  ⚠️ Request failed: {str(e)}")
+                
+            attempt += 1
             
             if attempt < max_retries:
-                logger.info(f"  🔄 Retrying in {retry_delay}s...")
+                logger.info(f"  🔄 Retrying in {retry_delay}s (attempt {attempt + 1}/{max_retries})...")
                 time.sleep(retry_delay)
         
         logger.error(f"  ❌ [{self.NAME}] {mode} failed after {max_retries} attempts")
+        logger.error(f"  ℹ Last error: {str(last_error) if last_error else 'Unknown error'}")
         raise AgentExecutionError(
-            f"Agent failed after {max_retries} attempts",
+            f"Agent failed after {max_retries} attempts: {str(last_error) if last_error else 'Unknown error'}",
             self.NAME,
             max_retries
         )

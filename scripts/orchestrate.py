@@ -64,6 +64,13 @@ _research_logger = None
 def init_logger(root_dir: Path):
     global _research_logger
     _research_logger = ResearchLogger(root_dir)
+    
+    # Connect research logger to agent logger for dual logging
+    try:
+        from agents.logging_config import agent_logger
+        agent_logger.set_research_logger(_research_logger.log)
+    except Exception as e:
+        print(f"[Warning] Could not connect research logger: {e}")
 
 def rlog(msg: str):
     if _research_logger: _research_logger.log(msg)
@@ -373,7 +380,7 @@ def run_agent(agent: str, mode: str, vars_map: dict, retries: int = 3, delay: in
             output = agent_instance.execute(
                 prompt=final_prompt,
                 mode=mode,
-                max_retries=1,  # We handle retries here
+                max_retries=retries,  # Let adapter handle retries for local models
                 retry_delay=delay,
                 options={
                     "workspace": str(ROOT)  # Pass project root as workspace
