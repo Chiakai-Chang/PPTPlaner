@@ -265,7 +265,10 @@ def run_agent(agent: str, mode: str, vars_map: dict, retries: int = 3, delay: in
                 prompt=final_prompt,
                 mode=mode,
                 max_retries=1,  # We handle retries here
-                retry_delay=delay
+                retry_delay=delay,
+                options={
+                    "workspace": str(ROOT)  # Pass project root as workspace
+                }
             )
             
             agent_logger.log_agent_response(timing, True, len(output))

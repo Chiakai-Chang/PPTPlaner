@@ -33,10 +33,22 @@ class AntigravityAdapter(AgentInterface):
         """Build command line for Antigravity CLI."""
         cmd = [self.command_override or self.COMMAND]
         
+        # Use -p flag for non-interactive single-prompt mode
+        cmd.append("-p")
+        
         # Add model flag if specified
         model = options.get("model", self.model) if options else self.model
         if model:
             cmd.extend(["-m", model])
+        
+        # Add workspace directory for file access
+        workspace = options.get("workspace") if options else None
+        if workspace:
+            cmd.extend(["--add-dir", workspace])
+        
+        # Auto-approve tool permissions for automation
+        # This allows the agent to use tools without user intervention
+        cmd.append("--dangerously-skip-permissions")
         
         # Add JSON output for structured modes
         if options and options.get("output_format") == "json":
