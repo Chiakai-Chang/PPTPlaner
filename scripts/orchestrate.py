@@ -196,6 +196,7 @@ def run_agent(agent: str, mode: str, vars_map: dict, retries: int = 3, delay: in
     """
     from agents import AgentFactory
     from agents.exceptions import AgentAuthenticationError, AgentQuotaExceededError
+    from agents.logging_config import agent_logger
     
     # Backward compatibility: map "gemini" to "antigravity"
     if agent.lower().strip() == "gemini":
@@ -251,6 +252,11 @@ def run_agent(agent: str, mode: str, vars_map: dict, retries: int = 3, delay: in
 
     attempt = 0
     while attempt < retries:
+        # Log agent call with timing
+        timing = agent_logger.log_agent_call(
+            agent_instance.NAME, mode, model_name, attempt + 1, retries
+        )
+        
         print_info(f"Calling {agent_instance.NAME} for {mode}... (Attempt {attempt + 1}/{retries})")
         rlog_data(f"Agent Inputs ({mode})", log_inputs)
 
@@ -262,10 +268,12 @@ def run_agent(agent: str, mode: str, vars_map: dict, retries: int = 3, delay: in
                 retry_delay=delay
             )
             
+            agent_logger.log_agent_response(timing, True, len(output))
             rlog_block(f"Agent Raw Output ({mode})", output)
             if output: return output
             attempt += 1
         except Exception as e:
+            agent_logger.log_agent_response(timing, False, error_msg=str(e))
             print_error(f"Agent execution failed: {str(e)}", exit_code=None)
             
             # Check if it's an authentication or quota error

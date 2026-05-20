@@ -26,6 +26,7 @@ from .exceptions import (
     AgentAuthenticationError,
     AgentQuotaExceededError
 )
+from .logging_config import agent_logger
 
 # Import adapters (auto-registers them)
 try:

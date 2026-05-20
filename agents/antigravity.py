@@ -63,10 +63,16 @@ class AntigravityAdapter(AgentInterface):
         options: Optional[Dict[str, Any]] = None
     ) -> str:
         """Execute agent with given prompt and mode."""
+        from .logging_config import agent_logger
+        
         cmd = self._build_command(prompt, mode, options)
         
         attempt = 0
         while attempt < max_retries:
+            timing = agent_logger.log_agent_call(
+                self.NAME, mode, model, attempt + 1, max_retries
+            )
+            
             try:
                 logger.info(f"Calling {self.NAME} for {mode}... (Attempt {attempt + 1}/{max_retries})")
                 result = subprocess.run(
@@ -80,12 +86,14 @@ class AntigravityAdapter(AgentInterface):
                 
                 output = result.stdout.strip()
                 if output:
+                    agent_logger.log_agent_response(timing, True, len(output))
                     return output
                 
                 attempt += 1
                 
             except subprocess.CalledProcessError as e:
                 error_type = self._detect_error_type(e.stderr)
+                agent_logger.log_agent_response(timing, False, error_msg=e.stderr.strip())
                 
                 if error_type == "auth":
                     raise AgentAuthenticationError("Authentication failed", self.NAME)
