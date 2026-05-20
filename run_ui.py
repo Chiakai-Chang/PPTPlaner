@@ -14,6 +14,11 @@ import requests
 import yaml
 from pathlib import Path
 
+# Ensure project root is in Python path for agent imports
+ROOT = Path(__file__).resolve().parent
+if str(ROOT) not in sys.path:
+    sys.path.insert(0, str(ROOT))
+
 # version = "v3.3" # Removed hardcoded version
 
 class App(tk.Tk):
@@ -300,6 +305,7 @@ class App(tk.Tk):
         """Update model dropdown based on selected agent."""
         from agents import AgentFactory
         from agents.openai_compatible import OpenAICompatibleAdapter
+        from agents.model_detector import default_detector
         
         agent_name = self.agent_type_var.get()
         
@@ -309,13 +315,15 @@ class App(tk.Tk):
         # Show/hide API config based on agent type
         if is_openai_compat:
             self.api_config_frame.pack(side="left", fill="x", expand=True, pady=5)
+            # Auto-detect local models
+            threading.Thread(target=self._auto_detect_local_models, daemon=True).start()
+        else:
+            self.api_config_frame.pack_forget()
             # Set default endpoint based on agent type
             if agent_name in ["ollama", "openai-compatible"]:
                 self.api_base_var.set("http://localhost:11434/v1")
             elif agent_name == "llamacpp":
                 self.api_base_var.set("http://localhost:8080/v1")
-        else:
-            self.api_config_frame.pack_forget()
         
         # CLI agents (antigravity, claude) don't need model selector via -p flag
         is_cli_agent = agent_name in ["antigravity", "claude"]
@@ -333,6 +341,30 @@ class App(tk.Tk):
         except Exception:
             # Fallback to empty list if agent not available
             pass
+    
+    def _auto_detect_local_models(self):
+        """Auto-detect local AI models in background."""
+        try:
+            endpoints = default_detector.detect_all()
+            available = [e for e in endpoints if e.available]
+            
+            if available:
+                first_endpoint = available[0]
+                base_url = first_endpoint.url
+                
+                # Convert to /v1 format for OpenAI-compatible API
+                if "/v1" not in base_url:
+                    base_url += "/v1"
+                
+                # Update API base URL
+                self.api_base_var.set(base_url)
+                
+                # Log detection result
+                models = [m.name for m in first_endpoint.models] if first_endpoint.models else []
+                print(f"[Auto-Detect] Found {first_endpoint.type} at {base_url}")
+                print(f"[Auto-Detect] Available models: {', '.join(models[:5])}")
+        except Exception as e:
+            print(f"[Auto-Detect] Failed: {e}")
     
     def _detect_local_models(self):
         """Detect local AI models (Ollama, llama.cpp)."""
@@ -1101,34 +1133,10 @@ class App(tk.Tk):
             self.log_message(f"啟動程序時發生錯誤: {e}\n"); self.run_button.config(state="normal", text="開始生成")
 
 def fetch_available_models():
-    """Fetches available Gemini model names from the gemini-cli GitHub documentation."""
-    print("正在從 GitHub 官方文件讀取可用的 Gemini 模型，請稍候...")
-    # I've updated the URL to the 'main' branch for the latest version.
-    model_url = "https://raw.githubusercontent.com/google-gemini/gemini-cli/main/docs/cli/model.md"
-    try:
-        response = requests.get(model_url, timeout=30, verify=False)
-        response.raise_for_status()
-        
-        # Find all strings that look like gemini model IDs (e.g., gemini-2.5-pro)
-        models = set(re.findall(r'gemini-[\w\.-]+', response.text))
-        models = sorted(list(models))
-        models = [m for m in models if m[-3:] != ".md"]
-        
-        if models:
-            sorted_models = sorted(list(models))
-            print(f"模型讀取完成。可用的模型: {', '.join(sorted_models)}")
-            return sorted_models
-        else:
-            print("在文件中未找到匹配的模型名稱。")
-
-    except requests.exceptions.RequestException as e:
-        print(f"無法從網路讀取模型列表: {e}")
-    except Exception as e:
-        print(f"解析模型列表時發生未知錯誤: {e}")
-    
-    print("將使用預設的模型列表。")
+    """Returns default model list (no longer fetched from GitHub)."""
+    # Model selection is now handled dynamically by AgentFactory
+    # This is just a fallback for CLI agents that don't support model selection
     return [
-        "gemini-2.5-flash-lite",
         "gemini-2.5-flash",
         "gemini-2.5-pro",
     ]
