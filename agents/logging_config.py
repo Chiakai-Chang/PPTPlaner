@@ -2,10 +2,12 @@
 Enhanced logging configuration for PPTPlaner agent system.
 
 Provides structured logging with timing information for agent execution.
+Also integrates with performance monitoring.
 """
 import logging
 import time
 from typing import Any, Dict, Optional
+from .performance import performance_monitor
 
 
 class AgentLogger:
@@ -45,7 +47,10 @@ class AgentLogger:
         return {
             "start_time": timestamp,
             "agent_name": agent_name,
-            "mode": mode
+            "mode": mode,
+            "model": model,
+            "attempt": attempt,
+            "max_attempts": max_attempts
         }
     
     def log_agent_response(
@@ -55,8 +60,21 @@ class AgentLogger:
         response_length: int = 0,
         error_msg: Optional[str] = None
     ):
-        """Log the completion of an agent call."""
+        """Log the completion of an agent call and record metrics."""
         elapsed = time.time() - timing_info["start_time"]
+        elapsed_ms = elapsed * 1000
+        
+        # Record performance metrics
+        performance_monitor.record_call(
+            agent_name=timing_info["agent_name"],
+            mode=timing_info["mode"],
+            duration_ms=elapsed_ms,
+            success=success,
+            model=timing_info.get("model"),
+            response_size=response_length,
+            retry_count=timing_info.get("attempt", 1) - 1,
+            error_category="error" if error_msg else None
+        )
         
         if success:
             self.logger.info(
