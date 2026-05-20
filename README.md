@@ -93,20 +93,32 @@
        1.  前往 [Node.js 官方網站](https://nodejs.org/) 下載 `LTS` (長期支援) 版本。
        2.  執行安裝程式，一路點擊「下一步 (Next)」即可完成安裝。`npm` 會跟著一起被裝好。
 
-#### 步驟 3：安裝 AI Agent
+#### 步驟 3：選擇 AI Agent
 
-*   **用途**：這是我們專案的「大腦」。
-*   **⚠️ 重要公告**：Google 已於 2026/5/19 宣布 Gemini CLI 將於 **2026/6/18** 停止服務。請改用 [Antigravity CLI](https://antigravity.google/download)。
-*   **如何安裝**：
-    1.  打開您的「命令提示字元 (cmd.exe)」或「Windows Terminal」。
-    2.  **推薦安裝 Antigravity CLI**（取代 Gemini CLI）：
-        ```bash
-        npm install -g @google/antigravity-cli@latest
-        ```
-    3.  或安裝其他支援的 Agent（Claude Code、Codex CLI 等）。
-*   詳細可參考：
-    *   [Antigravity CLI 官方文件](https://antigravity.google/docs/gcli-migration)
-    *   [Agent 遷移指南](docs/AGENT_MIGRATION_PLAN.md)
+PPTPlaner 支援多個 AI Agent 後端。您可以根據需求選擇：
+
+| Agent | 類型 | 安裝方式 | 預設 |
+|-------|------|----------|------|
+| **Antigravity CLI** | CLI | `npm install -g @google/antigravity-cli` | ✅ |
+| **Claude Code** | CLI | `npm install -g @anthropic-ai/claude-code` | |  
+| **OpenAI-compatible** | API | Ollama, llama.cpp, vLLM 等 | |
+| **OpenAI API** | API | 需要 API Key | |
+
+**安裝步驟**：
+1.  打開您的「命令提示字元 (cmd.exe)」或「Windows Terminal」。
+2.  **推薦安裝 Antigravity CLI**（預設）：
+    ```bash
+    npm install -g @google/antigravity-cli@latest
+    ```
+3.  或安裝其他支援的 Agent。
+
+**切換 Agent**：
+在 `config.yaml` 中修改：
+```yaml
+agent: "antigravity"  # 或 claude, openai-compatible, openai
+```
+
+或在 UI 中的 "AI Agent" 下拉選單選擇。
 
 
 完成以上三個步驟後，您的電腦就具備執行本專案所需的一切環境了！
