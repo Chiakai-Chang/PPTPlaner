@@ -16,7 +16,7 @@ REM ============================================================================
 REM  PPTPlaner One-Click Starter (.bat)
 REM  - Ensures UTF-8 encoding for compatibility.
 REM  - Validates Python and Node.js/npm installations, providing guidance if missing.
-REM  - Installs or updates the Google Gemini CLI.
+REM  - Installs or updates the Antigravity CLI (successor to Gemini CLI).
 REM  - Installs required Python packages.
 REM  - Launches the main application.
 REM =================================================================================
@@ -83,38 +83,39 @@ exit /b 1
 echo  - Found npm.
 
 
-REM --- Step 3: Install/Update Google Gemini CLI ---
+REM --- Step 3: Install/Update Antigravity CLI (Successor to Gemini CLI) ---
 echo.
-echo [3/5] Installing/Updating Google Gemini CLI...
+echo [3/5] Installing/Updating Antigravity CLI...
 
-where gemini >nul 2>nul
+where agy >nul 2>nul
 if %errorlevel% neq 0 (
-    echo  - Gemini CLI not found. Installing...
-    call npm install -g @google/gemini-cli
+    echo  - Antigravity CLI not found. Installing...
+    call npm install -g @google/antigravity-cli
     if !errorlevel! neq 0 (
         echo.
-        echo  - ERROR: Failed to install @google/gemini-cli. Please check your npm installation.
+        echo  - WARNING: Failed to install @google/antigravity-cli.
         echo  - You might need to run your terminal as an administrator.
+        echo  - Alternatively, you can use other supported agents:
+        echo  -   - Claude Code CLI (npm install -g @anthropic-ai/claude-code)
+        echo  -   - OpenAI-compatible API (Ollama, llama.cpp)
         echo.
-        pause
-        exit /b 1
+    ) else (
+        echo  - Antigravity CLI installed successfully.
     )
-    echo  - Gemini CLI installed successfully.
 ) else (
-    echo  - Google Gemini CLI is already installed.
+    echo  - Antigravity CLI is already installed.
     set /p update_choice="  - Do you want to check for updates? (y/N): "
     if /i "!update_choice!"=="y" (
         echo  - Checking for updates...
-        call npm install -g @google/gemini-cli
+        call npm install -g @google/antigravity-cli
         if !errorlevel! neq 0 (
             echo.
-            echo  - ERROR: Failed to update @google/gemini-cli. Please check your npm installation.
+            echo  - WARNING: Failed to update @google/antigravity-cli.
             echo  - You might need to run your terminal as an administrator.
             echo.
-            pause
-            exit /b 1
+        ) else (
+            echo  - Update check complete.
         )
-        echo  - Update check complete.
     ) else (
         echo  - Skipping update.
     )

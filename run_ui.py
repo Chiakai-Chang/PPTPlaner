@@ -156,6 +156,9 @@ class App(tk.Tk):
         tk.Button(ei_bottom_frame, text="升級舊版 HTML", command=self.update_legacy_html, font=("Arial", 10), bg="#e0f0e0").pack(side="right", padx=5)
 
 
+        # --- New Generation Controls ---
+        self.new_generation_controls_frame = tk.Frame(main_frame)
+        
         # --- Agent Selection with Availability Indicator ---
         agent_selection_frame = tk.Frame(self.new_generation_controls_frame)
         agent_selection_frame.grid(row=0, column=0, columnspan=3, sticky="w", pady=(0, 5))
@@ -171,9 +174,6 @@ class App(tk.Tk):
         # Update status when agent changes
         self.agent_type_var.trace_add("write", self._update_agent_status)
         self.agent_type_var.trace_add("write", self._update_models_for_agent)
-        
-        # --- New Generation Controls ---
-        self.new_generation_controls_frame = tk.Frame(main_frame)
         tk.Label(self.new_generation_controls_frame, text="原文書檔案 (必要):").grid(row=1, column=0, sticky="w", pady=2)
         tk.Entry(self.new_generation_controls_frame, textvariable=self.source_file_path, width=80).grid(row=1, column=0, padx=(0, 5), columnspan=2, sticky="ew")
         tk.Button(self.new_generation_controls_frame, text="瀏覽...", command=self.browse_source_file).grid(row=1, column=2)
