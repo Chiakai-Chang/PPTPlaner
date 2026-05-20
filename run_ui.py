@@ -308,43 +308,76 @@ class App(tk.Tk):
         from agents.model_detector import default_detector
         
         agent_name = self.agent_type_var.get()
+        print(f"[UI] Agent type changed to: {agent_name}")
         
         # Determine if this is an OpenAI-compatible agent
         is_openai_compat = agent_name in ["openai-compatible", "ollama", "llamacpp"]
         
         # Show/hide API config based on agent type
         if is_openai_compat:
+            print("[UI] Showing API configuration for OpenAI-compatible agent")
             self.api_config_frame.pack(side="left", fill="x", expand=True, pady=5)
-            # Auto-detect local models
-            threading.Thread(target=self._auto_detect_local_models, daemon=True).start()
-        else:
-            self.api_config_frame.pack_forget()
             # Set default endpoint based on agent type
             if agent_name in ["ollama", "openai-compatible"]:
                 self.api_base_var.set("http://localhost:11434/v1")
             elif agent_name == "llamacpp":
                 self.api_base_var.set("http://localhost:8080/v1")
+            # Auto-detect local models in background
+            print("[UI] Starting auto-detection in background...")
+            threading.Thread(target=self._auto_detect_local_models, daemon=True).start()
+        else:
+            print(f"[UI] Hiding API config for CLI agent: {agent_name}")
+            self.api_config_frame.pack_forget()
         
         # CLI agents (antigravity, claude) don't need model selector via -p flag
         is_cli_agent = agent_name in ["antigravity", "claude"]
         
+        # Get models - use timeout to avoid blocking
+        print(f"[UI] Fetching available models for {agent_name}...")
         try:
             agent_config = {"agent": agent_name}
             agent = AgentFactory.create(agent_config)
-            models = agent.get_models()
             
-            # Update all model comboboxes
-            for combobox in [self.initial_model_combobox, self.resume_model_combobox]:
-                combobox.config(values=models)
-                if models:
-                    combobox.set(models[0])  # Select first model by default
-        except Exception:
-            # Fallback to empty list if agent not available
-            pass
+            # Use a thread to fetch models to avoid blocking UI
+            def fetch_and_update():
+                try:
+                    models = agent.get_models()
+                    print(f"[UI] Fetched {len(models)} models for {agent_name}")
+                    
+                    # Update UI on main thread
+                    self.after(0, lambda: self._update_model_comboboxes(models))
+                except Exception as e:
+                    print(f"[UI] Error fetching models: {e}")
+            
+            threading.Thread(target=fetch_and_update, daemon=True).start()
+            
+            # Show loading state
+            self.after(0, lambda: self._show_model_loading())
+            
+        except Exception as e:
+            print(f"[UI] Failed to create agent: {e}")
+    
+    def _update_model_comboboxes(self, models):
+        """Update model comboboxes with fetched models."""
+        if not models:
+            return
+        
+        for combobox in [self.initial_model_combobox, self.resume_model_combobox]:
+            combobox.config(values=models)
+            if models:
+                combobox.set(models[0])  # Select first model by default
+                print(f"[UI] Set default model to: {models[0]}")
+    
+    def _show_model_loading(self):
+        """Show loading state while fetching models."""
+        for combobox in [self.initial_model_combobox, self.resume_model_combobox]:
+            combobox.config(values=["Loading models..."])
     
     def _auto_detect_local_models(self):
         """Auto-detect local AI models in background."""
         from agents.model_detector import default_detector
+        
+        print("[Auto-Detect] Starting model detection...")
         
         try:
             endpoints = default_detector.detect_all()
@@ -360,13 +393,21 @@ class App(tk.Tk):
                 
                 # Update API base URL
                 self.api_base_var.set(base_url)
+                print(f"[Auto-Detect] ✅ Found {first_endpoint.type} at {base_url}")
                 
-                # Log detection result
+                # Update model dropdown with detected models
                 models = [m.name for m in first_endpoint.models] if first_endpoint.models else []
-                print(f"[Auto-Detect] Found {first_endpoint.type} at {base_url}")
-                print(f"[Auto-Detect] Available models: {', '.join(models[:5])}")
+                if models:
+                    self.after(0, lambda: self._update_model_comboboxes(models))
+                    print(f"[Auto-Detect] ✅ Detected models: {', '.join(models[:5])}")
+                else:
+                    print("[Auto-Detect] ⚠️ No models detected, using defaults")
+            else:
+                print("[Auto-Detect] ⚠️ No available local models found")
         except Exception as e:
-            print(f"[Auto-Detect] Failed: {e}")
+            import traceback
+            print(f"[Auto-Detect] ❌ Failed: {e}")
+            print(traceback.format_exc())
     
     def _detect_local_models(self):
         """Detect local AI models (Ollama, llama.cpp)."""

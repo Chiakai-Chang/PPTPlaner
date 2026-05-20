@@ -217,13 +217,24 @@ def run_agent(agent: str, mode: str, vars_map: dict, retries: int = 3, delay: in
     agent_config = {
         "agent": agent.lower().strip(),
         "agent_config": {
-            "model": model_name
+            "model": model_name,
+            "api_base": cfg.get("agent_config", {}).get("api_base"),
+            "api_key": cfg.get("agent_config", {}).get("api_key")
         }
     }
     
     # Create agent instance
     try:
         agent_instance = AgentFactory.create(agent_config)
+        print_info(f"✅ Created agent instance: {agent_instance.NAME}")
+        
+        # For OpenAI-compatible agents, ensure model is set
+        if agent.lower().strip() in ["openai-compatible", "ollama", "llamacpp"]:
+            if not model_name:
+                # Get first available model
+                models = agent_instance.get_models()
+                model_name = models[0] if models else "llama3.1"
+                print_info(f"🔹 Using detected model: {model_name}")
     except Exception as e:
         print_error(f"Failed to create agent '{agent}': {e}")
         return ""

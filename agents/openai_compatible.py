@@ -33,9 +33,10 @@ class OpenAICompatibleAdapter(AgentInterface):
         agent_config = config.get("agent_config", {})
         self.api_base = agent_config.get("api_base", "http://localhost:11434/v1")
         self.api_key = agent_config.get("api_key", "not-needed")
-        self.model = agent_config.get("model", "llama3.1")
+        self.model = agent_config.get("model", None)  # Will be set dynamically from endpoint
         self.max_retries = agent_config.get("max_retries", 3)
         self.retry_delay = agent_config.get("retry_delay", 5)
+        self._detected_models = None
     
     @staticmethod
     def get_default_endpoints() -> List[str]:
@@ -68,20 +69,29 @@ class OpenAICompatibleAdapter(AgentInterface):
         """Execute agent via OpenAI-compatible API."""
         import urllib.request
         import urllib.error
+        import time
+        
+        # Use detected model if none specified
+        actual_model = model or self.model
+        if not actual_model:
+            available = self.get_models()
+            actual_model = available[0] if available else "llama3.1"
+            logger.info(f"Using detected model: {actual_model}")
         
         request_data = self._build_request(prompt, mode, options)
-        if model:
-            request_data["model"] = model
+        request_data["model"] = actual_model
         
         headers = {
             "Content-Type": "application/json",
             "Authorization": f"Bearer {self.api_key}"
         }
         
+        logger.info(f"🔹 [{self.NAME}] Calling {mode} (model={actual_model}, endpoint={self.api_base})")
+        
         attempt = 0
         while attempt < max_retries:
             try:
-                logger.info(f"Calling {self.NAME} for {mode}... (Attempt {attempt + 1}/{max_retries})")
+                logger.info(f"  ℹ Calling {self.NAME} for {mode}... (Attempt {attempt + 1}/{max_retries})")
                 
                 req = urllib.request.Request(
                     f"{self.api_base}/chat/completions",
@@ -92,58 +102,101 @@ class OpenAICompatibleAdapter(AgentInterface):
                 
                 with urllib.request.urlopen(req, timeout=120) as response:
                     result = json.loads(response.read().decode('utf-8'))
-                    return result["choices"][0]["message"]["content"]
+                    content = result["choices"][0]["message"]["content"]
+                    logger.info(f"  ✅ [{self.NAME}] {mode} completed ({len(content)} tokens)")
+                    return content
                 
             except urllib.error.HTTPError as e:
                 if e.code == 401:
+                    logger.error(f"  ❌ Authentication failed for {self.api_base}")
                     raise AgentAuthenticationError("Authentication failed", self.NAME)
                 elif e.code == 429:
-                    logger.warning("Rate limited, retrying...")
+                    logger.warning(f"  ⚠️ Rate limited, retrying in {retry_delay}s...")
                     attempt += 1
                     if attempt < max_retries:
-                        import time
                         time.sleep(retry_delay)
                     continue
                 else:
-                    logger.warning(f"HTTP error: {e.code}")
+                    logger.warning(f"  ⚠️ HTTP {e.code}: {e.reason}")
                     attempt += 1
             except Exception as e:
-                logger.warning(f"Request failed: {str(e)}")
+                logger.warning(f"  ⚠️ Request failed: {str(e)}")
                 attempt += 1
             
             if attempt < max_retries:
-                import time
+                logger.info(f"  🔄 Retrying in {retry_delay}s...")
                 time.sleep(retry_delay)
         
+        logger.error(f"  ❌ [{self.NAME}] {mode} failed after {max_retries} attempts")
         raise AgentExecutionError(
             f"Agent failed after {max_retries} attempts",
             self.NAME,
             max_retries
         )
     
-    def get_models(self) -> List[str]:
-        """Return list of available models."""
-        # Try to fetch from API
+    def _fetch_models_from_api(self) -> List[str]:
+        """Fetch models from API endpoint with proper error handling."""
+        import urllib.request
+        import urllib.error
+        
+        headers = {
+            "Authorization": f"Bearer {self.api_key}"
+        }
+        
         try:
-            import urllib.request
-            import urllib.error
-            
-            headers = {
-                "Authorization": f"Bearer {self.api_key}"
-            }
-            
             req = urllib.request.Request(
                 f"{self.api_base}/models",
                 headers=headers,
                 method='GET'
             )
             
-            with urllib.request.urlopen(req, timeout=10) as response:
+            with urllib.request.urlopen(req, timeout=5) as response:
                 result = json.loads(response.read().decode('utf-8'))
-                return [m["id"] for m in result.get("data", [])]
-        except Exception:
-            # Fallback defaults
-            return ["llama3.1", "llama3.2", "mistral"]
+                
+                # Handle both OpenAI format and llama.cpp format
+                if "data" in result:
+                    # OpenAI format
+                    return [m["id"] for m in result["data"]]
+                elif "models" in result:
+                    # llama.cpp format
+                    return [m["id"] for m in result["models"]]
+                else:
+                    return []
+        except urllib.error.HTTPError as e:
+            logger.warning(f"HTTP {e.code} fetching models from {self.api_base}")
+            return []
+        except Exception as e:
+            logger.debug(f"Failed to fetch models from {self.api_base}: {e}")
+            return []
+    
+    def get_models(self) -> List[str]:
+        """Return list of available models, caching the result."""
+        # Return cached result if available
+        if self._detected_models is not None:
+            return self._detected_models
+        
+        # Try to fetch from API
+        models = self._fetch_models_from_api()
+        
+        if models:
+            self._detected_models = models
+            logger.info(f"Discovered {len(models)} models from {self.api_base}")
+            return models
+        
+        # Fallback to detecting local endpoints
+        from .model_detector import default_detector
+        endpoints = default_detector.detect_all()
+        for endpoint in endpoints:
+            if endpoint.available and endpoint.models:
+                model_names = [m.name for m in endpoint.models]
+                self._detected_models = model_names
+                logger.info(f"Using detected models from {endpoint.type}: {model_names}")
+                return model_names
+        
+        # Final fallback
+        fallback = ["llama3.1", "llama3.2", "mistral"]
+        self._detected_models = fallback
+        return fallback
     
     def is_available(self) -> bool:
         """Check if API endpoint is available."""
