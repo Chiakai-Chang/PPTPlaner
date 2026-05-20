@@ -9,7 +9,21 @@ version: 3.9.1 # 專案版本號
 
 # 🧠 主任務設定
 source_file: "source/Chapter9.md"         # 要處理的原始文檔（可改為 Thesis.md、Report.md 等）
-agent: "gemini"                     # 使用的 CLI Agent（codex / gemini / claude）
+
+# ⚠️ IMPORTANT: Gemini CLI deprecated June 18, 2026. Migrate to antigravity or other agents.
+# Supported agents: gemini, antigravity, claude, codex, ollama, openai
+agent: "gemini"                     # 使用的 CLI Agent（gemini / antigravity / claude / codex / ollama）
+
+# Agent-specific configuration
+agent_config:
+  # Model selection (agent-specific)
+  model: null                       # 特定模型（如 gemini-1.5-pro, claude-sonnet-4）
+  # For local models (ollama, llama.cpp)
+  api_base: null                    # API endpoint for local models
+  api_key: null                     # API key for external services
+  # Command override (for custom agent paths)
+  command_override: null            # Custom command path if needed
+
 notes_locale: "zh-TW"              # 備忘稿語言
 preserve_english_terms: true       # 是否保留英文原文與專有名詞
 

@@ -93,16 +93,20 @@
        1.  前往 [Node.js 官方網站](https://nodejs.org/) 下載 `LTS` (長期支援) 版本。
        2.  執行安裝程式，一路點擊「下一步 (Next)」即可完成安裝。`npm` 會跟著一起被裝好。
 
-#### 步驟 3：安裝 AI Agent (以 Gemini 為例)
+#### 步驟 3：安裝 AI Agent
 
 *   **用途**：這是我們專案的「大腦」。
+*   **⚠️ 重要公告**：Google 已於 2026/5/19 宣布 Gemini CLI 將於 **2026/6/18** 停止服務。請改用 [Antigravity CLI](https://antigravity.google/download)。
 *   **如何安裝**：
     1.  打開您的「命令提示字元 (cmd.exe)」或「Windows Terminal」。
-    2.  輸入並執行以下指令：
+    2.  **推薦安裝 Antigravity CLI**（取代 Gemini CLI）：
         ```bash
-        npm install -g @google/gemini-cli@latest
+        npm install -g @google/antigravity-cli@latest
         ```
-*   詳細可參考 CodeLove 愛寫扣論壇：[Google Gemini CLI 教學：如何安裝與使用（附圖片）](https://codelove.tw/@tony/post/qvpDJ3)
+    3.  或安裝其他支援的 Agent（Claude Code、Codex CLI 等）。
+*   詳細可參考：
+    *   [Antigravity CLI 官方文件](https://antigravity.google/docs/gcli-migration)
+    *   [Agent 遷移指南](docs/AGENT_MIGRATION_PLAN.md)
 
 
 完成以上三個步驟後，您的電腦就具備執行本專案所需的一切環境了！
