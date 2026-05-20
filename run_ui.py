@@ -156,13 +156,20 @@ class App(tk.Tk):
         tk.Button(ei_bottom_frame, text="升級舊版 HTML", command=self.update_legacy_html, font=("Arial", 10), bg="#e0f0e0").pack(side="right", padx=5)
 
 
-        # --- Agent Selection ---
+        # --- Agent Selection with Availability Indicator ---
         agent_selection_frame = tk.Frame(self.new_generation_controls_frame)
         agent_selection_frame.grid(row=0, column=0, columnspan=3, sticky="w", pady=(0, 5))
         tk.Label(agent_selection_frame, text="AI Agent:").pack(side="left", padx=(0, 10))
         self.agent_type_var = tk.StringVar(value="antigravity")
         agent_combobox = ttk.Combobox(agent_selection_frame, textvariable=self.agent_type_var, values=self.agent_types, state="readonly", width=20)
-        agent_combobox.pack(side="left")
+        agent_combobox.pack(side="left", padx=(0, 5))
+        
+        # Availability indicator (green/red dot)
+        self.agent_status_label = tk.Label(agent_selection_frame, text="●", fg="#cccccc", font=("Arial", 12))
+        self.agent_status_label.pack(side="left", padx=(0, 5))
+        
+        # Update status when agent changes
+        self.agent_type_var.trace_add("write", self._update_agent_status)
         
         # --- New Generation Controls ---
         self.new_generation_controls_frame = tk.Frame(main_frame)
@@ -259,6 +266,27 @@ class App(tk.Tk):
         filepath = filedialog.askopenfilename(title="選擇 guide.html", filetypes=(("HTML files", "*.html"), ("All files", "*.*")))
         if filepath: self.guide_html_path.set(os.path.abspath(filepath))
 
+    def _update_agent_status(self, *args):
+        """Update agent availability indicator based on selected agent."""
+        from agents import AgentFactory
+        
+        agent_name = self.agent_type_var.get()
+        status = AgentFactory.get_agent_status(agent_name)
+        
+        if status.get("available"):
+            self.agent_status_label.config(fg="#4caf50")  # Green
+            self.agent_status_label.config(cursor="")
+        else:
+            self.agent_status_label.config(fg="#f44336")  # Red
+            self.agent_status_label.config(cursor="hand2")
+            # Add tooltip with hint
+            if "hint" in status:
+                self.agent_status_label.bind("<Enter>", lambda e: self._show_tooltip(status["hint"]))
+    
+    def _show_tooltip(self, text):
+        """Show simple tooltip message."""
+        messagebox.showinfo("Agent 不可用", text)
+    
     def toggle_mode_inputs(self):
         # Forget everything first
         self.new_generation_controls_frame.pack_forget()
