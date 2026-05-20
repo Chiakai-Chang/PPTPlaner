@@ -37,6 +37,16 @@ class OpenAICompatibleAdapter(AgentInterface):
         self.max_retries = agent_config.get("max_retries", 3)
         self.retry_delay = agent_config.get("retry_delay", 5)
     
+    @staticmethod
+    def get_default_endpoints() -> List[str]:
+        """Get list of default local endpoints to try."""
+        return [
+            "http://localhost:11434/v1",  # Ollama default
+            "http://127.0.0.1:11434/v1", # Ollama alternative
+            "http://localhost:8080/v1",   # llama.cpp default
+            "http://127.0.0.1:8080/v1",  # llama.cpp alternative
+        ]
+    
     def _build_request(self, prompt: str, mode: str, options: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
         """Build API request payload."""
         return {

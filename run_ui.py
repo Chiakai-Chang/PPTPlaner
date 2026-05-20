@@ -200,10 +200,22 @@ class App(tk.Tk):
         self.custom_instruction_text = tk.Text(self.new_generation_controls_frame, height=3, width=80, wrap=tk.WORD)
         self.custom_instruction_text.grid(row=6, column=0, padx=(0,5), columnspan=3, sticky="ew")
 
-        # --- Gemini Model Selection ---
-        model_selection_frame = tk.Frame(self.new_generation_controls_frame)
-        model_selection_frame.grid(row=7, column=0, columnspan=3, sticky="w", pady=5)
-        tk.Label(model_selection_frame, text="選擇 Gemini 模型:").pack(side="left", padx=(0, 10))
+        # --- Model/API Configuration Frame (conditionally shown) ---
+        self.model_config_frame = tk.Frame(self.new_generation_controls_frame)
+        self.model_config_frame.grid(row=7, column=0, columnspan=3, sticky="w", pady=5)
+        
+        # API URL configuration for OpenAI-compatible agents
+        self.api_config_frame = tk.Frame(self.model_config_frame)
+        tk.Label(self.api_config_frame, text="API 端點 URL:").pack(side="left", padx=(0, 10))
+        self.api_base_var = tk.StringVar(value="http://localhost:11434/v1")
+        self.api_base_entry = tk.Entry(self.api_config_frame, textvariable=self.api_base_var, width=40)
+        self.api_base_entry.pack(side="left", padx=(0, 5))
+        self.detect_btn = tk.Button(self.api_config_frame, text="偵測", command=self._detect_local_models, bg="#e0f0e0")
+        self.detect_btn.pack(side="left", padx=(0, 5))
+        
+        # Model selection (shown for agents that support model selection)
+        model_selection_frame = tk.Frame(self.model_config_frame)
+        tk.Label(model_selection_frame, text="選擇模型:").pack(side="left", padx=(0, 10))
         self.initial_gemini_model_var = tk.StringVar(value=self.available_gemini_models[0] if self.available_gemini_models else "")
         self.initial_model_combobox = ttk.Combobox(model_selection_frame, textvariable=self.initial_gemini_model_var, values=self.available_gemini_models, state="readonly", width=30)
         self.initial_model_combobox.pack(side="left")
@@ -287,8 +299,27 @@ class App(tk.Tk):
     def _update_models_for_agent(self, *args):
         """Update model dropdown based on selected agent."""
         from agents import AgentFactory
+        from agents.openai_compatible import OpenAICompatibleAdapter
         
         agent_name = self.agent_type_var.get()
+        
+        # Determine if this is an OpenAI-compatible agent
+        is_openai_compat = agent_name in ["openai-compatible", "ollama", "llamacpp"]
+        
+        # Show/hide API config based on agent type
+        if is_openai_compat:
+            self.api_config_frame.pack(side="left", fill="x", expand=True, pady=5)
+            # Set default endpoint based on agent type
+            if agent_name in ["ollama", "openai-compatible"]:
+                self.api_base_var.set("http://localhost:11434/v1")
+            elif agent_name == "llamacpp":
+                self.api_base_var.set("http://localhost:8080/v1")
+        else:
+            self.api_config_frame.pack_forget()
+        
+        # CLI agents (antigravity, claude) don't need model selector via -p flag
+        is_cli_agent = agent_name in ["antigravity", "claude"]
+        
         try:
             agent_config = {"agent": agent_name}
             agent = AgentFactory.create(agent_config)
@@ -302,6 +333,35 @@ class App(tk.Tk):
         except Exception:
             # Fallback to empty list if agent not available
             pass
+    
+    def _detect_local_models(self):
+        """Detect local AI models (Ollama, llama.cpp)."""
+        from agents.model_detector import default_detector
+        
+        # Clear previous results
+        self.api_base_entry.config(state="normal")
+        
+        # Run detection
+        endpoints = default_detector.detect_all()
+        available = [e for e in endpoints if e.available]
+        
+        if available:
+            # Use first available endpoint
+            first_endpoint = available[0]
+            base_url = first_endpoint.url
+            
+            # Convert to /v1 format for OpenAI-compatible API
+            if "/v1" not in base_url:
+                base_url += "/v1"
+            
+            self.api_base_var.set(base_url)
+            
+            # Show model info
+            models = [m.name for m in first_endpoint.models] if first_endpoint.models else []
+            status_msg = f"找到 {first_endpoint.type} 於 {base_url}\n可用模型: {', '.join(models[:5])}"  
+            messagebox.showinfo("偵測結果", status_msg)
+        else:
+            messagebox.showwarning("偵測結果", "未偵測到可用的本地模型\n\n請確保:\n- Ollama 正在執行 (預設 port 11434)\n- 或 llama.cpp server 正在執行 (預設 port 8080)")
     
     def _show_tooltip(self, text):
         """Show simple tooltip message."""
