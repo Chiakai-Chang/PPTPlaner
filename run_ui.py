@@ -287,16 +287,36 @@ class App(tk.Tk):
     def _update_agent_status(self, *args):
         """Update agent availability indicator based on selected agent."""
         from agents import AgentFactory
+        from agents.model_detector import default_detector
         
         agent_name = self.agent_type_var.get()
+        print(f"[UI] Checking availability for agent: {agent_name}")
+        
+        # For OpenAI-compatible agents, check local endpoints first
+        if agent_name in ["openai-compatible", "ollama", "llamacpp"]:
+            try:
+                endpoints = default_detector.detect_all()
+                available = [e for e in endpoints if e.available]
+                
+                if available:
+                    print(f"[UI] ✅ Local endpoint available: {available[0].type}")
+                    self.agent_status_label.config(fg="#4caf50")  # Green
+                    self.agent_status_label.config(cursor="")
+                    return
+            except Exception as e:
+                print(f"[UI] ⚠️ Local detection failed: {e}")
+        
+        # For CLI agents or if local detection failed, use AgentFactory
         status = AgentFactory.get_agent_status(agent_name)
         
         if status.get("available"):
             self.agent_status_label.config(fg="#4caf50")  # Green
             self.agent_status_label.config(cursor="")
+            print(f"[UI] ✅ Agent {agent_name} is available")
         else:
             self.agent_status_label.config(fg="#f44336")  # Red
             self.agent_status_label.config(cursor="hand2")
+            print(f"[UI] ❌ Agent {agent_name} is not available")
             # Add tooltip with hint
             if "hint" in status:
                 self.agent_status_label.bind("<Enter>", lambda e: self._show_tooltip(status["hint"]))
@@ -362,11 +382,17 @@ class App(tk.Tk):
         if not models:
             return
         
+        # Only update once
+        self.after(0, lambda: self._do_update_models(models))
+    
+    def _do_update_models(self, models):
+        """Perform the actual model update."""
         for combobox in [self.initial_model_combobox, self.resume_model_combobox]:
             combobox.config(values=models)
-            if models:
-                combobox.set(models[0])  # Select first model by default
-                print(f"[UI] Set default model to: {models[0]}")
+        
+        if models:
+            combobox.set(models[0])  # Select first model by default
+            print(f"[UI] ✅ Set model dropdown to: {models[0]}")
     
     def _show_model_loading(self):
         """Show loading state while fetching models."""

@@ -213,13 +213,21 @@ def run_agent(agent: str, mode: str, vars_map: dict, retries: int = 3, delay: in
         print_info("⚠️  Gemini CLI is deprecated. Using Antigravity CLI.")
         agent = "antigravity"
     
+    # Load config to get agent-specific settings
+    config_data = {}
+    if CONFIG_PATH.exists():
+        try:
+            config_data = yaml.safe_load(CONFIG_PATH.read_text(encoding='utf-8'))
+        except Exception:
+            pass
+    
     # Build agent config
     agent_config = {
         "agent": agent.lower().strip(),
         "agent_config": {
             "model": model_name,
-            "api_base": cfg.get("agent_config", {}).get("api_base"),
-            "api_key": cfg.get("agent_config", {}).get("api_key")
+            "api_base": config_data.get("agent_config", {}).get("api_base"),
+            "api_key": config_data.get("agent_config", {}).get("api_key")
         }
     }
     
