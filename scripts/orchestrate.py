@@ -96,6 +96,10 @@ def print_info(msg: str):
     print(f"  ℹ {msg}", flush=True)
     rlog(f"INFO: {msg}")
 
+def print_warning(msg: str):
+    print(f"  ⚠️  {msg}", flush=True)
+    rlog(f"WARNING: {msg}")
+
 def print_error(msg: str, exit_code: int = 1):
     error_message = f"  ✗ [ERROR] {msg}"
     print(error_message, file=sys.stderr, flush=True)
@@ -221,28 +225,59 @@ def run_agent(agent: str, mode: str, vars_map: dict, retries: int = 3, delay: in
         except Exception:
             pass
     
+    # For OpenAI-compatible agents, auto-detect endpoint if not configured
+    detected_api_base = None
+    detected_model = None
+    if agent.lower().strip() in ["openai-compatible", "ollama", "llamacpp"]:
+        from agents.model_detector import default_detector
+        try:
+            endpoints = default_detector.detect_all()
+            available = [e for e in endpoints if e.available]
+            if available:
+                first_endpoint = available[0]
+                detected_api_base = first_endpoint.url
+                if "/v1" not in detected_api_base:
+                    detected_api_base += "/v1"
+                print_info(f"🔹 Auto-detected {first_endpoint.type} at {detected_api_base}")
+                
+                if first_endpoint.models:
+                    detected_model = first_endpoint.models[0].name
+                    print_info(f"🔹 Auto-detected model: {detected_model}")
+        except Exception as e:
+            print_warning(f"⚠️ Auto-detection failed: {e}")
+    
+    # Get API base from config or detection
+    api_base = config_data.get("agent_config", {}).get("api_base") or detected_api_base
+    if not api_base:
+        api_base = "http://localhost:11434/v1"  # Default Ollama
+    
+    # For OpenAI-compatible agents, use detected model or let adapter handle it
+    effective_model = model_name
+    if agent.lower().strip() in ["openai-compatible", "ollama", "llamacpp"]:
+        if detected_model:
+            effective_model = detected_model
+            print_info(f"🔹 Using detected model: {detected_model}")
+        elif model_name and "gemini" in model_name.lower():
+            # Don't use gemini model names for non-Gemini agents
+            print_info(f"⚠️ Ignoring gemini model name, will use detected model")
+            effective_model = None
+    
     # Build agent config
     agent_config = {
         "agent": agent.lower().strip(),
         "agent_config": {
-            "model": model_name,
-            "api_base": config_data.get("agent_config", {}).get("api_base"),
+            "model": effective_model,
+            "api_base": api_base,
             "api_key": config_data.get("agent_config", {}).get("api_key")
         }
     }
+    
+    print_info(f"🔹 Agent config: model={effective_model}, api_base={api_base}")
     
     # Create agent instance
     try:
         agent_instance = AgentFactory.create(agent_config)
         print_info(f"✅ Created agent instance: {agent_instance.NAME}")
-        
-        # For OpenAI-compatible agents, ensure model is set
-        if agent.lower().strip() in ["openai-compatible", "ollama", "llamacpp"]:
-            if not model_name:
-                # Get first available model
-                models = agent_instance.get_models()
-                model_name = models[0] if models else "llama3.1"
-                print_info(f"🔹 Using detected model: {model_name}")
     except Exception as e:
         print_error(f"Failed to create agent '{agent}': {e}")
         return ""
