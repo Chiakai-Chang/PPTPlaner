@@ -56,14 +56,24 @@ class AntigravityAdapter(AgentInterface):
         
         return cmd
     
-    def _detect_error_type(self, stderr: str) -> str:
-        """Detect error type from stderr."""
-        stderr_lower = stderr.lower()
-        if "authentication" in stderr_lower or "login required" in stderr_lower:
+    def _detect_error_type(self, stderr: str, stdout: str = "") -> str:
+        """Detect error type from stderr using enhanced parsing."""
+        from .error_parser import parse_cli_error, ErrorCategory
+        
+        parsed = parse_cli_error(stderr, stdout)
+        
+        # Map to legacy error types for backward compatibility
+        if parsed.category == ErrorCategory.AUTH:
             return "auth"
-        if "exhausted" in stderr_lower or "quota" in stderr_lower:
+        elif parsed.category == ErrorCategory.QUOTA:
             return "quota"
-        return "other"
+        else:
+            return "other"
+    
+    def _get_parsed_error(self, stderr: str, stdout: str = "") -> "ParsedError":
+        """Get detailed parsed error."""
+        from .error_parser import parse_cli_error
+        return parse_cli_error(stderr, stdout)
     
     def execute(
         self,
@@ -104,15 +114,35 @@ class AntigravityAdapter(AgentInterface):
                 attempt += 1
                 
             except subprocess.CalledProcessError as e:
-                error_type = self._detect_error_type(e.stderr)
-                agent_logger.log_agent_response(timing, False, error_msg=e.stderr.strip())
+                # Get parsed error with detailed classification
+                parsed_error = self._get_parsed_error(e.stderr, e.stdout)
+                error_type = self._detect_error_type(e.stderr, e.stdout)
+                
+                agent_logger.log_agent_response(
+                    timing, 
+                    False, 
+                    error_msg=f"[{parsed_error.category}] {parsed_error.message}"
+                )
                 
                 if error_type == "auth":
-                    raise AgentAuthenticationError("Authentication failed", self.NAME)
+                    raise AgentAuthenticationError(
+                        str(parsed_error), 
+                        self.NAME
+                    )
                 elif error_type == "quota":
-                    raise AgentAuthenticationError("Quota exceeded", self.NAME)
+                    raise AgentAuthenticationError(
+                        str(parsed_error), 
+                        self.NAME
+                    )
                 else:
-                    logger.warning(f"Agent execution failed: {e.stderr.strip()}")
+                    logger.warning(f"Agent execution failed: {parsed_error}")
+                    if not parsed_error.retryable:
+                        # Don't retry non-retryable errors
+                        raise AgentExecutionError(
+                            str(parsed_error), 
+                            self.NAME, 
+                            attempt + 1
+                        )
                     attempt += 1
             
             if attempt < max_retries:
