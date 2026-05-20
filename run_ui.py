@@ -344,6 +344,8 @@ class App(tk.Tk):
     
     def _auto_detect_local_models(self):
         """Auto-detect local AI models in background."""
+        from agents.model_detector import default_detector
+        
         try:
             endpoints = default_detector.detect_all()
             available = [e for e in endpoints if e.available]

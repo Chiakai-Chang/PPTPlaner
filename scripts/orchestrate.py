@@ -9,6 +9,11 @@ ROOT = Path(__file__).resolve().parents[1]
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
+# Ensure project root is in Python path for agent imports
+ROOT = Path(__file__).resolve().parents[1]
+if str(ROOT) not in sys.path:
+    sys.path.insert(0, str(ROOT))
+
 # Ensure UTF-8 output on Windows
 if sys.platform == 'win32':
     try:
