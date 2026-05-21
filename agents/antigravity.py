@@ -3,10 +3,15 @@ Antigravity CLI Adapter
 
 Supports the Antigravity CLI (agy) command-line tool.
 This is the successor to Gemini CLI.
+
+IMPORTANT: agy is a TTY-aware CLI. It requires a pseudo-terminal (PTY)
+to produce output. Standard subprocess.PIPE will NOT work.
+This adapter uses pywinpty on Windows to create a PTY.
 """
 import subprocess
 import os
 import time
+import re
 import logging
 from typing import Optional, List, Dict, Any
 from .base import AgentInterface
@@ -17,7 +22,11 @@ logger = logging.getLogger(__name__)
 
 
 class AntigravityAdapter(AgentInterface):
-    """Antigravity CLI (agy) adapter."""
+    """Antigravity CLI (agy) adapter.
+    
+    Uses pywinpty to create a pseudo-terminal for agy CLI,
+    which requires TTY to output results.
+    """
     
     NAME = "Antigravity CLI"
     COMMAND = "agy"
@@ -28,51 +37,118 @@ class AntigravityAdapter(AgentInterface):
         self.max_retries = config.get("agent_config", {}).get("max_retries", 3)
         self.retry_delay = config.get("agent_config", {}).get("retry_delay", 5)
         self.command_override = config.get("agent_config", {}).get("command_override")
+        self._use_pywinpty = True  # Enable by default
+        
+        # Check if pywinpty is available
+        try:
+            import winpty
+            logger.debug("pywinpty available")
+        except ImportError:
+            logger.warning("pywinpty not available, falling back to subprocess")
+            self._use_pywinpty = False
     
-    def _build_command(self, prompt: str, mode: str, options: Optional[Dict[str, Any]] = None) -> list[str]:
-        """Build command line for Antigravity CLI.
+    def _build_command_string(self, prompt: str, mode: str, options: Optional[Dict[str, Any]] = None) -> str:
+        """Build command string for shell execution.
         
-        IMPORTANT: agy -p requires the prompt as an argument, NOT via stdin.
-        Example: agy -p "your prompt here" --dangerously-skip-permissions
+        Returns a shell command string for pywinpty.
         """
-        cmd = [self.command_override or self.COMMAND]
+        cmd_exe = self.command_override or self.COMMAND
         
-        # Use -p flag with prompt as argument
-        cmd.append("-p")
-        cmd.append(prompt)  # Prompt MUST be passed as argument, not stdin!
+        # Build command parts - escape quotes in prompt
+        escaped_prompt = prompt.replace('"', '\\"')
+        parts = [cmd_exe, "-p", f'"{escaped_prompt}"']
         
-        # Auto-approve tool permissions for automation
-        # This allows the agent to use tools without user intervention
-        cmd.append("--dangerously-skip-permissions")
+        # Auto-approve tool permissions
+        parts.append("--dangerously-skip-permissions")
         
-        # Add workspace directory for file access
+        # Add timeout
+        parts.append("--print-timeout 600s")
+        
+        # Add workspace directory if specified
         workspace = options.get("workspace") if options else None
         if workspace:
-            cmd.extend(["--add-dir", workspace])
+            parts.extend(["--add-dir", workspace])
         
-        # Add timeout (default 5 minutes)
-        cmd.extend(["--print-timeout", "600s"])
-        
-        return cmd
+        return " ".join(parts)
     
-    def _detect_error_type(self, stderr: str, stdout: str = "") -> str:
-        """Detect error type from stderr using enhanced parsing."""
-        from .error_parser import parse_cli_error, ErrorCategory
+    def _strip_ansi_codes(self, text: str) -> str:
+        """Remove ANSI escape codes from terminal output."""
+        # ANSI escape sequences
+        ansi_escape = re.compile(r'\x1b\[[0-9;]*[a-zA-Z]|\x1b\([^)]*\)|\x1b\[[0-9;]*[mGKH]|\\r\\n')
+        text = ansi_escape.sub('', text)
         
-        parsed = parse_cli_error(stderr, stdout)
+        # Remove other control characters
+        text = re.sub(r'\x1b\?.*?[hH]', '', text)
         
-        # Map to legacy error types for backward compatibility
-        if parsed.category == ErrorCategory.AUTH:
-            return "auth"
-        elif parsed.category == ErrorCategory.QUOTA:
-            return "quota"
-        else:
-            return "other"
+        return text
     
-    def _get_parsed_error(self, stderr: str, stdout: str = "") -> "ParsedError":
-        """Get detailed parsed error."""
-        from .error_parser import parse_cli_error
-        return parse_cli_error(stderr, stdout)
+    def _extract_json(self, text: str) -> str:
+        """Extract JSON content from markdown code blocks."""
+        # Try to find JSON in code blocks
+        json_match = re.search(r'```(?:json)?\s*\n?(.+?)\s*```', text, re.DOTALL)
+        if json_match:
+            return json_match.group(1).strip()
+        
+        # Try to find bare JSON
+        json_match = re.search(r'\{[^{}]+(?:\{[^{}]*\}[^{}]*)*\}', text, re.DOTALL)
+        if json_match:
+            return json_match.group(0)
+        
+        return text.strip()
+    
+    def _execute_with_pywinpty(self, cmd_string: str) -> str:
+        """Execute command using pywinpty for TTY support."""
+        from winpty import PtyProcess
+        
+        proc = PtyProcess.spawn(cmd_string)
+        
+        full_output = ""
+        timeout = 600  # 10 minutes for local models
+        elapsed = 0
+        idle_time = 0
+        
+        while proc.isalive() and elapsed < timeout:
+            try:
+                chunk = proc.read(4096)
+                if chunk:
+                    full_output += chunk
+                    idle_time = 0
+                else:
+                    idle_time += 0.1
+                    # If no output for too long, consider done
+                    if idle_time > 30:
+                        logger.debug("No output for 30s, assuming done")
+                        break
+            except EOFError:
+                break
+            
+            time.sleep(0.1)
+            elapsed += 0.1
+        
+        # Clean up process if still alive
+        if proc.isalive():
+            proc.kill()
+        
+        return full_output
+    
+    def _execute_with_subprocess(self, cmd_string: str) -> str:
+        """Fallback to subprocess if pywinpty not available."""
+        process = subprocess.Popen(
+            cmd_string,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.STDOUT,
+            text=True,
+            encoding="utf-8",
+            shell=True,
+            bufsize=1
+        )
+        
+        full_output = ""
+        for line in process.stdout:
+            full_output += line
+        
+        process.wait()
+        return full_output
     
     def execute(
         self,
@@ -86,8 +162,6 @@ class AntigravityAdapter(AgentInterface):
         """Execute agent with given prompt and mode."""
         from .logging_config import agent_logger
         
-        cmd = self._build_command(prompt, mode, options)
-        
         attempt = 0
         while attempt < max_retries:
             timing = agent_logger.log_agent_call(
@@ -96,84 +170,37 @@ class AntigravityAdapter(AgentInterface):
             
             try:
                 logger.info(f"Calling {self.NAME} for {mode}... (Attempt {attempt + 1}/{max_retries})")
-                logger.debug(f"Command: {' '.join(cmd)}")
                 
-                # CRITICAL: Use Popen with line-by-line reading
-                # agy -p requires prompt as argument, NOT stdin!
-                # subprocess.run does not work - must use Popen!
-                process = subprocess.Popen(
-                    cmd,
-                    stdout=subprocess.PIPE,
-                    stderr=subprocess.STDOUT,  # Merge stderr into stdout
-                    text=True,
-                    encoding="utf-8",
-                    bufsize=1  # Line buffered
-                )
+                # Build command string
+                cmd_string = self._build_command_string(prompt, mode, options)
+                logger.debug(f"Command: {cmd_string}")
                 
-                # Read line by line
-                full_output = ""
-                for line in process.stdout:
-                    full_output += line
+                # Execute using pywinpty (TTY required)
+                if self._use_pywinpty:
+                    raw_output = self._execute_with_pywinpty(cmd_string)
+                else:
+                    raw_output = self._execute_with_subprocess(cmd_string)
                 
-                process.wait()
+                # Clean up output
+                output = self._strip_ansi_codes(raw_output)
+                output = self._extract_json(output)
                 
-                # Log detailed output for debugging
-                logger.debug(f"Return code: {process.returncode}")
-                logger.debug(f"Output length: {len(full_output)}")
+                # Log result
+                logger.debug(f"Output length: {len(output)}")
                 
-                if process.returncode != 0:
-                    # Command failed
-                    error_msg = full_output.strip() or "Unknown error"
-                    logger.warning(f"Command failed with code {process.returncode}: {error_msg[:500]}")
-                    agent_logger.log_agent_response(
-                        timing, 
-                        False, 
-                        error_msg=f"Exit code {process.returncode}: {error_msg[:200]}"
-                    )
-                    attempt += 1
-                    continue
-                
-                output = full_output.strip()
-                if output:
+                if output.strip():
                     agent_logger.log_agent_response(timing, True, len(output))
-                    return output
+                    return output.strip()
                 
                 # Empty output - log and retry
                 logger.warning(f"Empty output from {self.NAME} (attempt {attempt + 1}/{max_retries})")
-                logger.debug(f"Output: {full_output[:200] if full_output else 'None'}")
+                logger.debug(f"Raw output: {raw_output[:200] if raw_output else 'None'}")
                 attempt += 1
                 
-            except subprocess.CalledProcessError as e:
-                # Get parsed error with detailed classification
-                parsed_error = self._get_parsed_error(e.stderr, e.stdout)
-                error_type = self._detect_error_type(e.stderr, e.stdout)
-                
-                agent_logger.log_agent_response(
-                    timing, 
-                    False, 
-                    error_msg=f"[{parsed_error.category}] {parsed_error.message}"
-                )
-                
-                if error_type == "auth":
-                    raise AgentAuthenticationError(
-                        str(parsed_error), 
-                        self.NAME
-                    )
-                elif error_type == "quota":
-                    raise AgentAuthenticationError(
-                        str(parsed_error), 
-                        self.NAME
-                    )
-                else:
-                    logger.warning(f"Agent execution failed: {parsed_error}")
-                    if not parsed_error.retryable:
-                        # Don't retry non-retryable errors
-                        raise AgentExecutionError(
-                            str(parsed_error), 
-                            self.NAME, 
-                            attempt + 1
-                        )
-                    attempt += 1
+            except Exception as e:
+                logger.error(f"Error executing {self.NAME}: {e}")
+                agent_logger.log_agent_response(timing, False, error_msg=str(e))
+                attempt += 1
             
             if attempt < max_retries:
                 logger.warning(f"Retrying in {retry_delay} seconds...")
@@ -187,18 +214,15 @@ class AntigravityAdapter(AgentInterface):
     
     def get_models(self) -> List[str]:
         """Return list of available models."""
-        # Default models - can be extended
         return ["gemini-1.5-pro", "gemini-2.0-flash"]
     
     def is_available(self) -> bool:
         """Check if Antigravity CLI is available."""
         cmd = self.command_override or self.COMMAND
         
-        # Try direct path
         if os.path.exists(cmd):
             return True
         
-        # Try finding in PATH
         result = subprocess.run(
             ["where", cmd] if os.name == "nt" else ["which", cmd],
             capture_output=True
@@ -208,7 +232,7 @@ class AntigravityAdapter(AgentInterface):
     
     def get_installation_hint(self) -> str:
         """Return installation instructions."""
-        return "Install Antigravity CLI: npm install -g @google/antigravity-cli"
+        return "Install Antigravity CLI: irm https://antigravity.google/cli/install.ps1 | iex"
 
 
 # Auto-register

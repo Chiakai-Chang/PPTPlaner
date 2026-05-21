@@ -4,3 +4,4 @@ markdown-it-py
 requests
 
 requests
+pywinpty>=3.0.0  # Required for antigravity CLI TTY support
