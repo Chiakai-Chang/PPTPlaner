@@ -30,29 +30,28 @@ class AntigravityAdapter(AgentInterface):
         self.command_override = config.get("agent_config", {}).get("command_override")
     
     def _build_command(self, prompt: str, mode: str, options: Optional[Dict[str, Any]] = None) -> list[str]:
-        """Build command line for Antigravity CLI."""
+        """Build command line for Antigravity CLI.
+        
+        IMPORTANT: agy -p requires the prompt as an argument, NOT via stdin.
+        Example: agy -p "your prompt here" --dangerously-skip-permissions
+        """
         cmd = [self.command_override or self.COMMAND]
         
-        # Use -p flag for non-interactive single-prompt mode
+        # Use -p flag with prompt as argument
         cmd.append("-p")
+        cmd.append(prompt)  # Prompt MUST be passed as argument, not stdin!
         
-        # Add model flag if specified
-        model = options.get("model", self.model) if options else self.model
-        if model:
-            cmd.extend(["-m", model])
+        # Auto-approve tool permissions for automation
+        # This allows the agent to use tools without user intervention
+        cmd.append("--dangerously-skip-permissions")
         
         # Add workspace directory for file access
         workspace = options.get("workspace") if options else None
         if workspace:
             cmd.extend(["--add-dir", workspace])
         
-        # Auto-approve tool permissions for automation
-        # This allows the agent to use tools without user intervention
-        cmd.append("--dangerously-skip-permissions")
-        
-        # Add JSON output for structured modes
-        if options and options.get("output_format") == "json":
-            cmd.extend(["--output-format", "json"])
+        # Add timeout (default 5 minutes)
+        cmd.extend(["--print-timeout", "600s"])
         
         return cmd
     
@@ -99,42 +98,49 @@ class AntigravityAdapter(AgentInterface):
                 logger.info(f"Calling {self.NAME} for {mode}... (Attempt {attempt + 1}/{max_retries})")
                 logger.debug(f"Command: {' '.join(cmd)}")
                 
-                # CRITICAL: Use stderr=subprocess.STDOUT to capture ALL output
-                # agy -p writes to stderr, not stdout!
-                result = subprocess.run(
+                # CRITICAL: Use Popen with line-by-line reading
+                # agy -p requires prompt as argument, NOT stdin!
+                # subprocess.run does not work - must use Popen!
+                process = subprocess.Popen(
                     cmd,
-                    input=prompt,
                     stdout=subprocess.PIPE,
                     stderr=subprocess.STDOUT,  # Merge stderr into stdout
                     text=True,
                     encoding="utf-8",
-                    check=False
+                    bufsize=1  # Line buffered
                 )
                 
-                # Log detailed output for debugging
-                logger.debug(f"Return code: {result.returncode}")
-                logger.debug(f"Combined output length: {len(result.stdout)}")
+                # Read line by line
+                full_output = ""
+                for line in process.stdout:
+                    full_output += line
                 
-                if result.returncode != 0:
+                process.wait()
+                
+                # Log detailed output for debugging
+                logger.debug(f"Return code: {process.returncode}")
+                logger.debug(f"Output length: {len(full_output)}")
+                
+                if process.returncode != 0:
                     # Command failed
-                    error_msg = result.stdout or "Unknown error"
-                    logger.warning(f"Command failed with code {result.returncode}: {error_msg[:500]}")
+                    error_msg = full_output.strip() or "Unknown error"
+                    logger.warning(f"Command failed with code {process.returncode}: {error_msg[:500]}")
                     agent_logger.log_agent_response(
                         timing, 
                         False, 
-                        error_msg=f"Exit code {result.returncode}: {error_msg[:200]}"
+                        error_msg=f"Exit code {process.returncode}: {error_msg[:200]}"
                     )
                     attempt += 1
                     continue
                 
-                output = result.stdout.strip()
+                output = full_output.strip()
                 if output:
                     agent_logger.log_agent_response(timing, True, len(output))
                     return output
                 
                 # Empty output - log and retry
                 logger.warning(f"Empty output from {self.NAME} (attempt {attempt + 1}/{max_retries})")
-                logger.debug(f"Combined output: {result.stdout[:200] if result.stdout else 'None'}")
+                logger.debug(f"Output: {full_output[:200] if full_output else 'None'}")
                 attempt += 1
                 
             except subprocess.CalledProcessError as e:
