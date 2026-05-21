@@ -16,7 +16,7 @@ REM ============================================================================
 REM  PPTPlaner One-Click Starter (.bat)
 REM  - Ensures UTF-8 encoding for compatibility.
 REM  - Validates Python and Node.js/npm installations, providing guidance if missing.
-REM  - Installs or updates the Antigravity CLI (successor to Gemini CLI).
+REM  - Checks for supported AI agents (optional).
 REM  - Installs required Python packages.
 REM  - Launches the main application.
 REM =================================================================================
@@ -62,63 +62,70 @@ if %errorlevel% equ 0 goto npm_found
 
 :npm_not_found
 echo.
-echo  ERROR: Node.js and npm not found. Please install using one of the options below:
+echo  WARNING: Node.js and npm not found.
+echo  This is ONLY required if you plan to use CLI-based agents:
+echo    - Antigravity CLI (Google)
+echo    - Claude Code CLI (Anthropic)
 echo.
-echo  Option 1: Install Node.js directly (recommended for most users)
-echo  1. Go to: https://nodejs.org/
-echo  2. Download and run the installer for the latest LTS version.
+echo  For local models (Ollama, llama.cpp) or OpenAI API, Node.js is NOT required.
 echo.
-echo  Option 2: Install via nvm-windows (for developers managing multiple versions)
-echo  1. Go to: https://github.com/coreybutler/nvm-windows/releases
-echo  2. Download 'nvm-setup.zip' and run the installer.
-echo  3. Open a NEW terminal and run: nvm install lts
-echo  4. Then run: nvm use [version_number] (e.g., nvm use 18.18.0)
-echo.
-echo  After installation is complete, please re-run this script.
-echo.
-pause
-exit /b 1
 
 :npm_found
 echo  - Found npm.
 
 
-REM --- Step 3: Install/Update Antigravity CLI (Successor to Gemini CLI) ---
+REM --- Step 3: Check for AI Agent (Optional) ---
 echo.
-echo [3/5] Installing/Updating Antigravity CLI...
+echo [3/5] Checking for supported AI agents...
+echo.
+echo  PPTPlaner supports multiple AI backends. You need at least ONE:
+echo.
+echo  1. Antigravity CLI (Google)  - Official installer:
+echo     irm https://antigravity.google/cli/install.ps1 | iex
+echo.
+echo  2. Claude Code CLI (Anthropic):
+echo     npm install -g @anthropic-ai/claude-code
+echo.
+echo  3. Local Models (no installation needed):
+echo     - Ollama: https://ollama.ai/
+echo     - llama.cpp: Run server with --host flag
+echo.
+echo  4. OpenAI API:
+echo     - Just need an API key
+echo.
+
+REM Check what agents are available
+set "AGENT_COUNT=0"
 
 where agy >nul 2>nul
-if %errorlevel% neq 0 (
-    echo  - Antigravity CLI not found. Installing...
-    call npm install -g @google/antigravity-cli
-    if !errorlevel! neq 0 (
-        echo.
-        echo  - WARNING: Failed to install @google/antigravity-cli.
-        echo  - You might need to run your terminal as an administrator.
-        echo  - Alternatively, you can use other supported agents:
-        echo  -   - Claude Code CLI (npm install -g @anthropic-ai/claude-code)
-        echo  -   - OpenAI-compatible API (Ollama, llama.cpp)
-        echo.
-    ) else (
-        echo  - Antigravity CLI installed successfully.
-    )
+if %errorlevel% equ 0 (
+    echo  [OK] Antigravity CLI (agy) - Found
+    set /a AGENT_COUNT+=1
 ) else (
-    echo  - Antigravity CLI is already installed.
-    set /p update_choice="  - Do you want to check for updates? (y/N): "
-    if /i "!update_choice!"=="y" (
-        echo  - Checking for updates...
-        call npm install -g @google/antigravity-cli
-        if !errorlevel! neq 0 (
-            echo.
-            echo  - WARNING: Failed to update @google/antigravity-cli.
-            echo  - You might need to run your terminal as an administrator.
-            echo.
-        ) else (
-            echo  - Update check complete.
-        )
-    ) else (
-        echo  - Skipping update.
-    )
+    echo  [--] Antigravity CLI (agy) - Not found
+)
+
+where claude >nul 2>nul
+if %errorlevel% equ 0 (
+    echo  [OK] Claude Code CLI - Found
+    set /a AGENT_COUNT+=1
+) else (
+    echo  [--] Claude Code CLI - Not found
+)
+
+echo.
+echo  Local models will be auto-detected at runtime.
+
+if !AGENT_COUNT! equ 0 (
+    echo.
+    echo  WARNING: No CLI-based agents found.
+    echo  You can still use PPTPlaner with:
+    echo    - Local models (Ollama, llama.cpp) - auto-detected
+    echo    - OpenAI API - configure in UI
+    echo.
+) else (
+    echo.
+    echo  Found !AGENT_COUNT! CLI agent(s) ready to use.
 )
 
 

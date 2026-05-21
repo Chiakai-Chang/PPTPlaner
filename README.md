@@ -99,18 +99,24 @@ PPTPlaner 支援多個 AI Agent 後端。您可以根據需求選擇：
 
 | Agent | 類型 | 安裝方式 | 預設 |
 |-------|------|----------|------|
-| **Antigravity CLI** | CLI | `npm install -g @google/antigravity-cli` | ✅ |
+| **Antigravity CLI** | CLI | `irm https://antigravity.google/cli/install.ps1 \| iex` | ✅ |
 | **Claude Code** | CLI | `npm install -g @anthropic-ai/claude-code` | |  
 | **OpenAI-compatible** | API | Ollama, llama.cpp, vLLM 等 | |
 | **OpenAI API** | API | 需要 API Key | |
 
 **安裝步驟**：
 1.  打開您的「命令提示字元 (cmd.exe)」或「Windows Terminal」。
-2.  **推薦安裝 Antigravity CLI**（預設）：
-    ```bash
-    npm install -g @google/antigravity-cli@latest
+2.  **選擇要安裝的 Agent**（至少需要一個）：
+    ```powershell
+    # Antigravity CLI (Google, 預設)
+    irm https://antigravity.google/cli/install.ps1 | iex
+    
+    # 或 Claude Code CLI (Anthropic)
+    npm install -g @anthropic-ai/claude-code
     ```
-3.  或安裝其他支援的 Agent。
+3.  **或使用本地模型**（無需安裝 Agent）：
+    - 安裝 Ollama: https://ollama.ai/
+    - 或運行 llama.cpp server
 
 **切換 Agent**：
 在 `config.yaml` 中修改：
