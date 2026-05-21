@@ -99,23 +99,25 @@ class AntigravityAdapter(AgentInterface):
                 logger.info(f"Calling {self.NAME} for {mode}... (Attempt {attempt + 1}/{max_retries})")
                 logger.debug(f"Command: {' '.join(cmd)}")
                 
+                # CRITICAL: Use stderr=subprocess.STDOUT to capture ALL output
+                # agy -p writes to stderr, not stdout!
                 result = subprocess.run(
                     cmd,
                     input=prompt,
-                    capture_output=True,
+                    stdout=subprocess.PIPE,
+                    stderr=subprocess.STDOUT,  # Merge stderr into stdout
                     text=True,
                     encoding="utf-8",
-                    check=False  # Don't raise, handle manually
+                    check=False
                 )
                 
                 # Log detailed output for debugging
                 logger.debug(f"Return code: {result.returncode}")
-                logger.debug(f"STDOUT length: {len(result.stdout)}")
-                logger.debug(f"STDERR length: {len(result.stderr)}")
+                logger.debug(f"Combined output length: {len(result.stdout)}")
                 
                 if result.returncode != 0:
                     # Command failed
-                    error_msg = result.stderr or result.stdout or "Unknown error"
+                    error_msg = result.stdout or "Unknown error"
                     logger.warning(f"Command failed with code {result.returncode}: {error_msg[:500]}")
                     agent_logger.log_agent_response(
                         timing, 
@@ -132,7 +134,7 @@ class AntigravityAdapter(AgentInterface):
                 
                 # Empty output - log and retry
                 logger.warning(f"Empty output from {self.NAME} (attempt {attempt + 1}/{max_retries})")
-                logger.debug(f"STDERR: {result.stderr[:200] if result.stderr else 'None'}")
+                logger.debug(f"Combined output: {result.stdout[:200] if result.stdout else 'None'}")
                 attempt += 1
                 
             except subprocess.CalledProcessError as e:
