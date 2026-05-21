@@ -46,12 +46,15 @@ class DetectedEndpoint:
     detection_details: List[str] = field(default_factory=list)
 
 
-# Default endpoints to check (these are just defaults, actual detection is type-agnostic)
+# Default endpoints to check - ordered by likelihood
+# Try localhost:11434 first (most common Ollama setup)
+# Then localhost:8080 (common llama.cpp setup)
+# 127.0.0.1 variants are fallbacks
 DEFAULT_ENDPOINTS = [
-    "http://localhost:11434",
-    "http://127.0.0.1:11434",
-    "http://localhost:8080",
-    "http://127.0.0.1:8080",
+    "http://localhost:11434",  # Ollama default - most common
+    "http://localhost:8080",   # llama.cpp default - second most common
+    "http://127.0.0.1:11434",  # Ollama fallback
+    "http://127.0.0.1:8080",   # llama.cpp fallback
 ]
 
 
@@ -254,6 +257,27 @@ class ModelDetector:
             result.error = f"Generic API detection failed: {str(e)}"
         
         return result
+    
+    def detect_quick(self) -> Optional[DetectedEndpoint]:
+        """Quick detection - tries only the most common endpoint first.
+        
+        Returns immediately if the first endpoint responds.
+        Useful for fast startup check.
+        """
+        if not self.endpoints:
+            return None
+        
+        # Try only the first (most common) endpoint
+        url = self.endpoints[0]
+        self._log(f"Quick check: {url}")
+        
+        result = self.detect_endpoint(url)
+        if result.available:
+            self._log(f"  ✅ Found {result.type} at {url}")
+            return result
+        
+        self._log(f"  ❌ Not available")
+        return None
     
     def detect_all(self) -> List[DetectedEndpoint]:
         """Detect all configured endpoints."""

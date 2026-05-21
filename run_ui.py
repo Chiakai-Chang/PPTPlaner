@@ -168,6 +168,10 @@ class App(tk.Tk):
         self.detect_btn = tk.Button(self.api_config_frame, text="偵測", command=self._detect_local_models, bg="#e0f0e0")
         self.detect_btn.pack(side="left", padx=(0, 5))
         
+        # Status label to show detection state
+        self.detect_status_label = tk.Label(self.api_config_frame, text="(尚未偵測)", fg="#9e9e9e", font=("Arial", 8))
+        self.detect_status_label.pack(side="left", padx=(5, 0))
+        
         # Endpoint selection (when multiple endpoints available)
         self.endpoint_select_frame = tk.Frame(self.model_config_frame)
         self.endpoint_select_frame.pack_forget()  # Hidden by default
@@ -175,7 +179,6 @@ class App(tk.Tk):
         self.endpoint_var = tk.StringVar()
         self.endpoint_combobox = ttk.Combobox(self.endpoint_select_frame, textvariable=self.endpoint_var, state="readonly", width=50)
         self.endpoint_combobox.pack(side="left")
-        self.endpoint_combobox.bind("<<ComboboxSelected>>", self._on_endpoint_selected)
         
         # Model selection (shown for agents that support model selection)
         model_selection_frame = tk.Frame(self.model_config_frame)
@@ -317,22 +320,22 @@ class App(tk.Tk):
         agent_name = self.agent_type_var.get()
         print(f"[UI] Checking availability for agent: {agent_name}")
         
-        # For OpenAI-compatible agents, check local endpoints first
+        # For OpenAI-compatible agents, do a QUICK check first
         if agent_name in ["openai-compatible", "ollama", "llamacpp"]:
             try:
-                # Use cached detection if available (from _auto_detect_local_models)
-                if hasattr(self, '_cached_endpoints'):
-                    endpoints = self._cached_endpoints
-                else:
-                    endpoints = default_detector.detect_all()
-                    self._cached_endpoints = endpoints  # Cache for later use
+                # Quick check on most common endpoint
+                result = default_detector.detect_quick()
                 
-                available = [e for e in endpoints if e.available]
-                
-                if available:
-                    print(f"[UI] ✅ Local endpoint available: {available[0].type}")
+                if result:
+                    print(f"[UI] ✅ Quick check passed: {result.type} at {result.url}")
                     self.agent_status_label.config(fg="#4caf50")  # Green
                     self.agent_status_label.config(cursor="")
+                    # Don't trigger full detection yet - wait for user to actually use it
+                    return
+                else:
+                    print(f"[UI] Quick check failed - will run full detection when needed")
+                    self.agent_status_label.config(fg="#ff9800")  # Orange (uncertain)
+                    self.agent_status_label.config(cursor="hand2")
                     return
             except Exception as e:
                 print(f"[UI] ⚠️ Local detection failed: {e}")
@@ -372,9 +375,8 @@ class App(tk.Tk):
                 self.api_base_var.set("http://localhost:11434/v1")
             elif agent_name == "llamacpp":
                 self.api_base_var.set("http://localhost:8080/v1")
-            # Auto-detect local models in background
-            print("[UI] Starting auto-detection in background...")
-            threading.Thread(target=self._auto_detect_local_models, daemon=True).start()
+            # Don't auto-detect yet - wait for user to click "偵測" or start generation
+            print("[UI] Click '偵測' button to scan for local AI servers")
         else:
             print(f"[UI] Hiding API config for CLI agent: {agent_name}")
             self.api_config_frame.pack_forget()
@@ -470,37 +472,62 @@ class App(tk.Tk):
         """Detect local AI models (Ollama, llama.cpp)."""
         from agents.model_detector import default_detector
         
-        # Clear previous results
-        self.api_base_entry.config(state="normal")
+        # Update status
+        self.detect_status_label.config(text="(偵測中...)", fg="#ff9800")
+        self.detect_btn.config(state="disabled")
         
-        # Run detection
-        endpoints = default_detector.detect_all()
-        self._cached_endpoints = endpoints  # Cache for later use
-        available = [e for e in endpoints if e.available]
+        # Run detection in background thread
+        def do_detection():
+            try:
+                endpoints = default_detector.detect_all()
+                self._cached_endpoints = endpoints  # Cache for later use
+                available = [e for e in endpoints if e.available]
+                
+                # Update UI on main thread
+                def update_ui():
+                    if available:
+                        # Use first available endpoint
+                        first_endpoint = available[0]
+                        base_url = first_endpoint.url
+                        
+                        # Convert to /v1 format for OpenAI-compatible API
+                        if "/v1" not in base_url:
+                            base_url += "/v1"
+                        
+                        self.api_base_var.set(base_url)
+                        
+                        # Show model info
+                        if first_endpoint.models:
+                            model_names = [m.name for m in first_endpoint.models]
+                            print(f"[Detect] Found models: {', '.join(model_names)}")
+                        
+                        # Update model dropdown
+                        self._update_model_comboboxes([m.name for m in first_endpoint.models] if first_endpoint.models else [])
+                        
+                        # Update status
+                        self.detect_status_label.config(
+                            text=f"({len(available)} 個端點)",
+                            fg="#4caf50"
+                        )
+                        
+                        messagebox.showinfo("偵測完成", f"發現 {len(available)} 個可用端點:\n\n" + 
+                                          "\n".join(f"- {ep.type} @ {ep.url}" for ep in available))
+                    else:
+                        self.detect_status_label.config(
+                            text="(未發現)",
+                            fg="#f44336"
+                        )
+                        messagebox.showwarning("偵測結果", "未發現任何可用的本地 AI 模型服務。\n\n請確認:\n- Ollama 已安裝並運行\n- 或 llama.cpp server 已啟動")
+                    
+                    self.detect_btn.config(state="normal")
+                
+                self.after(0, update_ui)
+            except Exception as e:
+                print(f"[Detect] Error: {e}")
+                self.after(0, lambda: self.detect_status_label.config(text="(錯誤)", fg="#f44336"))
+                self.after(0, lambda: self.detect_btn.config(state="normal"))
         
-        if available:
-            # Use first available endpoint
-            first_endpoint = available[0]
-            base_url = first_endpoint.url
-            
-            # Convert to /v1 format for OpenAI-compatible API
-            if "/v1" not in base_url:
-                base_url += "/v1"
-            
-            self.api_base_var.set(base_url)
-            
-            # Show model info
-            if first_endpoint.models:
-                model_names = [m.name for m in first_endpoint.models]
-                print(f"[Detect] Found models: {', '.join(model_names)}")
-            
-            # Update model dropdown
-            self.after(0, lambda: self._update_model_comboboxes([m.name for m in first_endpoint.models] if first_endpoint.models else []))
-            
-            messagebox.showinfo("偵測完成", f"發現 {len(available)} 個可用端點:\n\n" + 
-                              "\n".join(f"- {ep.type} @ {ep.url}" for ep in available))
-        else:
-            messagebox.showwarning("偵測結果", "未發現任何可用的本地 AI 模型服務。\n\n請確認:\n- Ollama 已安裝並運行\n- 或 llama.cpp server 已啟動")
+        threading.Thread(target=do_detection, daemon=True).start()
     
     def _show_tooltip(self, text: str):
         """Show tooltip when hovering over status label."""
@@ -668,19 +695,9 @@ class App(tk.Tk):
 
 # Main entry point
 def main():
-    # Detect available models
-    available_models = []
-    try:
-        from agents.model_detector import default_detector
-        models = default_detector.get_all_models()
-        available_models = [m.name for m in models]
-    except Exception as e:
-        print(f"Warning: Could not detect models: {e}")
-    
-    if not available_models:
-        available_models = ["default"]
-    
-    app = App(available_models)
+    # No startup detection - let user choose agent first
+    # Detection only happens when user selects openai-compatible agent
+    app = App(["Loading models..."])
     app.mainloop()
 
 
