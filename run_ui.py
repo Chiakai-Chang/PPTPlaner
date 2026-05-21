@@ -136,13 +136,9 @@ class App(tk.Tk):
         # --- New Generation Specific Inputs ---
         self.new_generation_controls_frame = tk.Frame(main_frame)
         
-        tk.Label(self.new_generation_controls_frame, text="選擇要分析的檔案:").grid(row=0, column=0, sticky="w", pady=2)
-        tk.Entry(self.new_generation_controls_frame, textvariable=self.source_file_path, width=80).grid(row=1, column=0, padx=(0, 5), columnspan=2, sticky="ew")
-        tk.Button(self.new_generation_controls_frame, text="瀏覽...", command=self.browse_files).grid(row=1, column=2)
-        
-        # --- Agent Selection ---
+        # --- Agent Selection (Moved to Top) ---
         agent_selection_frame = tk.Frame(self.new_generation_controls_frame)
-        agent_selection_frame.grid(row=2, column=0, columnspan=3, sticky="w", pady=5)
+        agent_selection_frame.grid(row=0, column=0, columnspan=3, sticky="w", pady=(0, 5))
         tk.Label(agent_selection_frame, text="AI Agent:").pack(side="left", padx=(0, 10))
         self.agent_type_var = tk.StringVar(value="antigravity")
         agent_combobox = ttk.Combobox(agent_selection_frame, textvariable=self.agent_type_var, values=self.agent_types, state="readonly", width=20)
@@ -160,7 +156,7 @@ class App(tk.Tk):
         
         # --- Model/API Configuration Frame (conditionally shown) ---
         self.model_config_frame = tk.Frame(self.new_generation_controls_frame)
-        self.model_config_frame.grid(row=7, column=0, columnspan=3, sticky="w", pady=5)
+        self.model_config_frame.grid(row=1, column=0, columnspan=3, sticky="w", pady=5)
         
         # API URL configuration for OpenAI-compatible agents
         self.api_config_frame = tk.Frame(self.model_config_frame)
@@ -190,9 +186,14 @@ class App(tk.Tk):
         self.initial_model_combobox = ttk.Combobox(model_selection_frame, textvariable=self.initial_gemini_model_var, values=self.available_gemini_models, state="readonly", width=30)
         self.initial_model_combobox.pack(side="left")
 
+        # --- File Selection (Moved Below Agent) ---
+        tk.Label(self.new_generation_controls_frame, text="選擇要分析的檔案:").grid(row=2, column=0, sticky="w", pady=2)
+        tk.Entry(self.new_generation_controls_frame, textvariable=self.source_file_path, width=80).grid(row=3, column=0, padx=(0, 5), columnspan=2, sticky="ew")
+        tk.Button(self.new_generation_controls_frame, text="瀏覽...", command=self.browse_files).grid(row=3, column=2)
+        
         # --- Reworks Frame ---
         rework_frame = tk.Frame(self.new_generation_controls_frame)
-        rework_frame.grid(row=8, column=0, columnspan=3, sticky="w", pady=5)
+        rework_frame.grid(row=4, column=0, columnspan=3, sticky="w", pady=5)
         tk.Label(rework_frame, text="最大修正次數 (0-10):").pack(side="left", padx=(0, 10))
         
         tk.Label(rework_frame, text="規劃:").pack(side="left", padx=(0, 5))
@@ -217,9 +218,17 @@ class App(tk.Tk):
 
         # --- SVG Generation Checkbox ---
         options_frame = tk.Frame(self.new_generation_controls_frame)
-        options_frame.grid(row=9, column=0, columnspan=3, sticky="w", pady=5)
+        options_frame.grid(row=5, column=0, columnspan=3, sticky="w", pady=5)
         self.svg_checkbox = tk.Checkbutton(options_frame, text="生成 SVG (實驗性功能，會增加 token 用量)", variable=self.generate_svg)
         self.svg_checkbox.pack(side="left")
+        
+        # --- Custom Instructions ---
+        instr_frame = tk.Frame(self.new_generation_controls_frame)
+        instr_frame.grid(row=6, column=0, columnspan=3, sticky="ew", pady=5)
+        tk.Label(instr_frame, text="自訂指令 (選填):").grid(row=0, column=0, sticky="w")
+        self.custom_instruction_text = scrolledtext.ScrolledText(instr_frame, height=4, state="normal", bg="#f5f5f5")
+        self.custom_instruction_text.grid(row=1, column=0, columnspan=2, sticky="ew", pady=2)
+        instr_frame.grid_columnconfigure(0, weight=1)
 
         self.new_generation_controls_frame.grid_columnconfigure(0, weight=1)
 
