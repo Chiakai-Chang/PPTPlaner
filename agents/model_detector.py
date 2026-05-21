@@ -89,17 +89,29 @@ class ModelDetector:
             print(f"[ModelDetector] {message}")
         logger.debug(message)
     
-    def detect_endpoint(self, endpoint_url: str) -> DetectedEndpoint:
+    def _get_expected_type(self, url: str) -> str:
+        """Determine expected server type based on port number.
+        
+        Returns the most likely server type for this port.
+        """
+        if ":11434" in url:
+            return "ollama"
+        elif ":8080" in url:
+            return "llamacpp"
+        return "unknown"
+    
+    def detect_endpoint(self, endpoint_url: str, force_all_types: bool = False) -> DetectedEndpoint:
         """
         Detect what type of server is running at the given URL and get its models.
         
-        This method tries ALL server types for each URL because:
-        - Ollama could be running on port 8080
-        - llama.cpp could be running on port 11434
-        - Custom endpoints could be any type
+        Detection strategy:
+        1. For default endpoints: Try only the expected type first (faster)
+        2. If that fails and force_all_types=False: Return immediately (user should specify)
+        3. If force_all_types=True (user-provided URL): Try all types (more lenient)
         
         Args:
             endpoint_url: The URL to check (e.g., http://localhost:11434)
+            force_all_types: If True, try all API types (for user-provided URLs)
         
         Returns:
             DetectedEndpoint with status and model information
@@ -111,26 +123,39 @@ class ModelDetector:
         
         self._log(f"Testing endpoint: {endpoint_url}")
         
-        # Try each detection method
+        # Determine expected type based on port
+        expected_type = self._get_expected_type(endpoint_url)
+        
+        if force_all_types:
+            # User-provided URL - try all types to be lenient
+            self._log(f"  → User-provided URL, testing all API types...")
+            detection_methods = [
+                ("Ollama", self._try_ollama),
+                ("llama.cpp", self._try_llamacpp),
+                ("OpenAI API", self._try_generic),
+            ]
+        else:
+            # Default endpoint - try expected type only (fast)
+            if expected_type == "ollama":
+                detection_methods = [("Ollama", self._try_ollama)]
+            elif expected_type == "llamacpp":
+                detection_methods = [("llama.cpp", self._try_llamacpp)]
+            else:
+                # Unknown port - try all
+                detection_methods = [
+                    ("Ollama", self._try_ollama),
+                    ("llama.cpp", self._try_llamacpp),
+                    ("OpenAI API", self._try_generic),
+                ]
+        
+        # Try detection methods
         detection_results = []
         
-        # Try Ollama detection
-        self._log(f"  → Testing Ollama (/api/tags)...")
-        ollama_result = self._try_ollama(endpoint_url)
-        detection_results.append(("Ollama", ollama_result))
-        
-        # Try llama.cpp detection
-        self._log(f"  → Testing llama.cpp (/props)...")
-        llama_result = self._try_llamacpp(endpoint_url)
-        detection_results.append(("llama.cpp", llama_result))
-        
-        # Try generic OpenAI API detection
-        self._log(f"  → Testing OpenAI API (/v1/models)...")
-        generic_result = self._try_generic(endpoint_url)
-        detection_results.append(("Generic", generic_result))
-        
-        # Find the first successful detection
-        for name, result in detection_results:
+        for name, detection_fn in detection_methods:
+            self._log(f"  → Testing {name}...")
+            result = detection_fn(endpoint_url)
+            detection_results.append((name, result))
+            
             if result.available:
                 self._log(f"  ✅ Detected as: {name}")
                 self._log(f"  ✅ Found {len(result.models)} model(s)")
@@ -261,6 +286,10 @@ class ModelDetector:
     def detect_quick(self) -> Optional[DetectedEndpoint]:
         """Quick detection - tries the two most common endpoints first.
         
+        Strategy:
+        - localhost:11434 → Only test Ollama API
+        - localhost:8080 → Only test llama.cpp API
+        
         Returns immediately if any endpoint responds.
         Useful for fast startup check.
         """
@@ -268,28 +297,36 @@ class ModelDetector:
             return None
         
         # Try only the first two most common endpoints (Ollama + llama.cpp)
-        # Don't try all 4 to keep it fast
         quick_endpoints = self.endpoints[:2]  # localhost:11434, localhost:8080
         
         for url in quick_endpoints:
             self._log(f"Quick check: {url}")
-            result = self.detect_endpoint(url)
+            # Don't force all types - test expected type only (faster)
+            result = self.detect_endpoint(url, force_all_types=False)
             if result.available:
                 self._log(f"  ✅ Found {result.type} at {url}")
                 return result
             self._log(f"  ❌ Not available")
         
         self._log(f"  ❌ No server found in quick check")
+        self._log(f"  ℹ Please specify your local model URL or click '偵測' to scan")
         return None
     
     def detect_all(self) -> List[DetectedEndpoint]:
-        """Detect all configured endpoints."""
+        """Detect all configured endpoints. 
+        
+        Uses smart detection:
+        - localhost:11434 → Only tests Ollama API
+        - localhost:8080 → Only tests llama.cpp API
+        - Other ports → Tests all APIs
+        """
         self._log(f"Starting detection of {len(self.endpoints)} endpoints...")
         results = []
         
         for i, endpoint_url in enumerate(self.endpoints, 1):
             self._log(f"\n[{i}/{len(self.endpoints)}] Testing {endpoint_url}")
-            result = self.detect_endpoint(endpoint_url)
+            # Use smart detection - only test expected type for default ports
+            result = self.detect_endpoint(endpoint_url, force_all_types=False)
             results.append(result)
         
         # Summary
@@ -303,12 +340,19 @@ class ModelDetector:
                 self._log(f"    - {ep.type} at {ep.url}: {len(ep.models)} model(s)")
         else:
             self._log(f"  No available endpoints found")
+            self._log(f"  ℹ Please check:")
+            self._log(f"    - Is Ollama running? (default: http://localhost:11434)")
+            self._log(f"    - Is llama.cpp running? (default: http://localhost:8080)")
+            self._log(f"    - Or specify a custom URL in the UI")
         self._log(f"{'='*50}")
         
         return results
     
     def detect_custom_endpoint(self, url: str) -> DetectedEndpoint:
-        """Detect a custom endpoint specified by the user."""
+        """Detect a custom endpoint specified by the user.
+        
+        For user-provided URLs, we try ALL API types to be lenient.
+        """
         self._log(f"Detecting custom endpoint: {url}")
         
         # Remove trailing slash if present
@@ -319,7 +363,8 @@ class ModelDetector:
             url = 'http://' + url
             self._log(f"Added http:// scheme: {url}")
         
-        return self.detect_endpoint(url)
+        # User-provided URL - try all API types to be lenient
+        return self.detect_endpoint(url, force_all_types=True)
     
     def get_available_endpoints(self) -> List[DetectedEndpoint]:
         """Get only available endpoints."""
