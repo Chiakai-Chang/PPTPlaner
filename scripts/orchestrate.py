@@ -122,6 +122,11 @@ def print_info(msg: str):
     print(f"  ℹ {msg}", flush=True)
     rlog(f"INFO: {msg}")
 
+def print_detail(msg: str):
+    """Print detailed information (only visible in console)."""
+    print(f"    ◦ {msg}", flush=True)
+    rlog(f"DETAIL: {msg}")
+
 def print_warning(msg: str):
     print(f"  ⚠️  {msg}", flush=True)
     rlog(f"WARNING: {msg}")
@@ -251,6 +256,9 @@ def run_agent(agent: str, mode: str, vars_map: dict, retries: int = 3, delay: in
         except Exception:
             pass
     
+    # Define CLI agent types (these use their own CLI, not API endpoints)
+    cli_agents = ["antigravity", "claude"]
+    
     # For OpenAI-compatible agents, auto-detect endpoint if not configured
     detected_api_base = None
     detected_model = None
@@ -315,8 +323,6 @@ def run_agent(agent: str, mode: str, vars_map: dict, retries: int = 3, delay: in
     effective_model = model_name
     
     # CLI agents: Don't run auto-detection for CLI agents - they use their own CLI
-    cli_agents = ["antigravity", "claude"]
-    
     if agent.lower().strip() in cli_agents:
         # CLI agents use their own command-line tools, not API endpoints
         # No auto-detection needed
@@ -638,6 +644,12 @@ def main():
         feedback = val_res.get("feedback", "") if val_res else "Validation failed"
         analysis_feedback_history.append(f"Attempt {attempt+1}: {feedback}")
         analysis_vars["rework_feedback"] = "\n\n".join(analysis_feedback_history)
+        
+        # Show detailed feedback to user
+        if val_res:
+            quality = val_res.get("quality_score", "N/A")
+            print_detail(f"Analysis quality score: {quality}/10")
+            print_detail(f"Feedback: {feedback[:150]}...")
 
     analysis_data = analysis_data or acceptable_analysis or current_analysis or {}
     
@@ -716,6 +728,12 @@ def main():
             feedback = val_res.get("feedback", "") if val_res else "Validation failed"
             plan_feedback_history.append(f"Attempt {attempt+1}: {feedback}")
             plan_vars["rework_feedback"] = "\n\n".join(plan_feedback_history)
+            
+            # Show detailed feedback to user
+            if val_res:
+                quality = val_res.get("quality_score", "N/A")
+                print_detail(f"Plan quality score: {quality}/10")
+                print_detail(f"Feedback: {feedback[:150]}...")
         
         plan_data = plan_data or acceptable_plan or current_plan or {}
         if plan_data: plan_path.write_text(json.dumps(plan_data, indent=2, ensure_ascii=False), encoding="utf-8")
@@ -755,6 +773,12 @@ def main():
         feedback = val_res.get("feedback", "") if val_res else "Validation failed"
         deck_feedback_history.append(f"Attempt {attempt+1}: {feedback}")
         deck_vars["rework_feedback"] = "\n\n".join(deck_feedback_history)
+        
+        # Show detailed feedback to user
+        if val_res:
+            quality = val_res.get("quality_score", "N/A")
+            print_detail(f"Deck quality score: {quality}/10")
+            print_detail(f"Feedback: {feedback[:150]}...")
 
     deck_data = deck_data or acceptable_deck or current_deck or {"slides": []}
     last_deck_content = deck_data.get("slides", [])
