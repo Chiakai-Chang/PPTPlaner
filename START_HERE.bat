@@ -55,7 +55,21 @@ REM --- Step 2: Install Python packages ---
 echo.
 echo [2/3] Installing required Python packages...
 
-"%PYTHON_EXE%" -m pip install -r requirements.txt --disable-pip-version-check -q
+REM Check if uv is available (faster than pip)
+set "USE_UV=0"
+where uv >nul 2>&1
+if %errorlevel% equ 0 (
+    set "USE_UV=1"
+    echo  - Using uv (fast installer)
+)
+
+if "%USE_UV%"=="1" (
+    uv pip install -r requirements.txt --system -q
+) else (
+    echo  - Using pip
+    "%PYTHON_EXE%" -m pip install -r requirements.txt --disable-pip-version-check -q
+)
+
 if %errorlevel% neq 0 (
     echo  - ERROR: Failed to install required packages.
     pause
