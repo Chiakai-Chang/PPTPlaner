@@ -225,8 +225,13 @@ class App(tk.Tk):
 
         # Common elements
         self.run_button = tk.Button(main_frame, text="開始生成", command=self.run_orchestration, font=("Arial", 12, "bold"), bg="#c0d8f0")
+        self.run_button.pack(pady=10, fill="x", padx=10)
+        
         self.progress_label = tk.Label(main_frame, text="執行進度:")
+        self.progress_label.pack(pady=5, padx=10)
+        
         self.console = scrolledtext.ScrolledText(main_frame, wrap=tk.WORD, state="disabled", bg="#f5f5f5")
+        self.console.pack(pady=5, padx=10, fill="both", expand=True)
 
         # Initial toggle to set correct visibility
         self.toggle_mode_inputs()
