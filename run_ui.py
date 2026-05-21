@@ -96,7 +96,7 @@ class App(tk.Tk):
 
         # --- Resume Specific Inputs ---
         self.resume_output_dir_frame = tk.Frame(main_frame) 
-        tk.Label(self.resume_output_dir_frame, text="選擇現有輸出資料夾 (用於接續生成):").grid(row=0, column=0, columnspan=3, sticky="w", pady=2)
+        tk.Label(self.resume_output_dir_frame, text="選擇現有輸出資料夾 (用於接續生成): ").grid(row=0, column=0, columnspan=3, sticky="w", pady=2)
         self.resume_output_dir_path = tk.StringVar()
         tk.Entry(self.resume_output_dir_frame, textvariable=self.resume_output_dir_path, width=80).grid(row=1, column=0, padx=(0, 5), columnspan=2, sticky="ew")
         tk.Button(self.resume_output_dir_frame, text="瀏覽...", command=self.browse_resume_output_dir).grid(row=1, column=2)
@@ -119,92 +119,42 @@ class App(tk.Tk):
         tk.Button(ei_top_frame, text="讀取並列出頁面", command=self.load_slides_from_html, bg="#d0f0c0").grid(row=0, column=3, padx=10)
         ei_top_frame.grid_columnconfigure(1, weight=1)
 
-        # YouTube Input Section
-        yt_frame = tk.Frame(self.embed_images_frame)
-        yt_frame.pack(fill="x", padx=5, pady=(0, 5))
-        tk.Label(yt_frame, text="YouTube 影片 ID (選填):").pack(side="left")
-        self.youtube_id_var = tk.StringVar()
-        tk.Entry(yt_frame, textvariable=self.youtube_id_var, width=25).pack(side="left", padx=5)
-        tk.Label(yt_frame, text="(例如: dQw4w9WgXcQ)", fg="gray", font=("Arial", 9)).pack(side="left")
-        
-        # Source URL Input Section
-        url_frame = tk.Frame(self.embed_images_frame)
-        url_frame.pack(fill="x", padx=5, pady=(0, 5))
-        tk.Label(url_frame, text="原文連結 URL (選填):   ").pack(side="left")
-        self.source_url_var = tk.StringVar()
-        tk.Entry(url_frame, textvariable=self.source_url_var, width=50).pack(side="left", padx=5)
+        # Bottom section: Canvas + Scrollbar
+        self.image_canvas_frame = tk.Frame(self.embed_images_frame)
+        self.image_canvas_frame.pack(fill="both", expand=True)
+        self.image_canvas = tk.Canvas(self.image_canvas_frame, bg="white")
+        self.image_scrollbar = tk.Scrollbar(self.image_canvas_frame, orient="vertical", command=self.image_canvas.yview)
+        self.image_canvas.configure(yscrollcommand=self.image_scrollbar.set)
+        self.image_scrollbar.pack(side="right", fill="y")
+        self.image_canvas.pack(side="left", fill="both", expand=True)
+        self.slide_rows_frame = tk.Frame(self.image_canvas)
+        self.slide_rows_frame.pack(fill="both", expand=True, padx=5, pady=5)
+        self.image_canvas.create_window((0,0), window=self.slide_rows_frame, anchor="nw")
+        self.slide_rows_frame.bind("<Configure>", lambda e: self.image_canvas.configure(scrollregion=self.image_canvas.bbox("all")))
+        self.image_canvas.bind("<MouseWheel>", self._on_mousewheel)
 
-        # Middle section: Scrollable list of slides
-        self.slide_list_container = tk.Frame(self.embed_images_frame, bd=2, relief="groove")
-        self.slide_list_container.pack(fill="both", expand=True, pady=10)
-        
-        # Canvas for scrolling
-        self.slide_canvas = tk.Canvas(self.slide_list_container)
-        self.scrollbar = ttk.Scrollbar(self.slide_list_container, orient="vertical", command=self.slide_canvas.yview)
-        self.scrollable_frame = tk.Frame(self.slide_canvas)
-
-        self.scrollable_frame.bind(
-            "<Configure>",
-            lambda e: self.slide_canvas.configure(scrollregion=self.slide_canvas.bbox("all"))
-        )
-        self.slide_canvas.create_window((0, 0), window=self.scrollable_frame, anchor="nw")
-        self.slide_canvas.configure(yscrollcommand=self.scrollbar.set)
-        
-        self.slide_canvas.pack(side="left", fill="both", expand=True)
-        self.scrollbar.pack(side="right", fill="y")
-
-        # Bottom section: Generate Button
-        ei_bottom_frame = tk.Frame(self.embed_images_frame)
-        ei_bottom_frame.pack(fill="x", pady=10)
-        tk.Label(ei_bottom_frame, text="注意: 生成後檔案將存為 slide.html，預設位於同一目錄下。").pack(side="left", padx=5)
-        tk.Button(ei_bottom_frame, text="生成圖文切換簡報 (slide.html)", command=self.generate_image_slide_html, font=("Arial", 11, "bold"), bg="#c0d8f0").pack(side="right", padx=5)
-        tk.Button(ei_bottom_frame, text="升級舊版 HTML", command=self.update_legacy_html, font=("Arial", 10), bg="#e0f0e0").pack(side="right", padx=5)
-
-
-        # --- New Generation Controls ---
+        # --- New Generation Specific Inputs ---
         self.new_generation_controls_frame = tk.Frame(main_frame)
         
-        # --- Agent Selection with Availability Indicator ---
+        tk.Label(self.new_generation_controls_frame, text="選擇要分析的檔案:").grid(row=0, column=0, sticky="w", pady=2)
+        tk.Entry(self.new_generation_controls_frame, textvariable=self.source_file_path, width=80).grid(row=1, column=0, padx=(0, 5), columnspan=2, sticky="ew")
+        tk.Button(self.new_generation_controls_frame, text="瀏覽...", command=self.browse_files).grid(row=1, column=2)
+        
+        # --- Agent Selection ---
         agent_selection_frame = tk.Frame(self.new_generation_controls_frame)
-        agent_selection_frame.grid(row=0, column=0, columnspan=3, sticky="w", pady=(0, 5))
+        agent_selection_frame.grid(row=2, column=0, columnspan=3, sticky="w", pady=5)
         tk.Label(agent_selection_frame, text="AI Agent:").pack(side="left", padx=(0, 10))
         self.agent_type_var = tk.StringVar(value="antigravity")
         agent_combobox = ttk.Combobox(agent_selection_frame, textvariable=self.agent_type_var, values=self.agent_types, state="readonly", width=20)
-        agent_combobox.pack(side="left", padx=(0, 5))
+        agent_combobox.pack(side="left", padx=(0, 10))
         
-        # Availability indicator (green/red dot)
-        self.agent_status_label = tk.Label(agent_selection_frame, text="●", fg="#cccccc", font=("Arial", 12))
-        self.agent_status_label.pack(side="left", padx=(0, 5))
+        # Agent availability indicator
+        self.agent_status_label = tk.Label(agent_selection_frame, text="(檢查中...)", fg="#9e9e9e")
+        self.agent_status_label.pack(side="left")
         
         # Update status when agent changes
         self.agent_type_var.trace_add("write", self._update_agent_status)
-        self.agent_type_var.trace_add("write", self._update_models_for_agent)
-        tk.Label(self.new_generation_controls_frame, text="原文書檔案 (必要):").grid(row=1, column=0, sticky="w", pady=2)
-        tk.Entry(self.new_generation_controls_frame, textvariable=self.source_file_path, width=80).grid(row=1, column=0, padx=(0, 5), columnspan=2, sticky="ew")
-        tk.Button(self.new_generation_controls_frame, text="瀏覽...", command=self.browse_source_file).grid(row=1, column=2)
-
-        # --- Manual Metadata Input ---
-        meta_frame = tk.LabelFrame(self.new_generation_controls_frame, text="文件資訊 (選填 - 若填寫將覆蓋 AI 分析結果)", padx=5, pady=5)
-        meta_frame.grid(row=2, column=0, columnspan=3, sticky="ew", pady=5)
         
-        tk.Label(meta_frame, text="文件標題:").grid(row=0, column=0, sticky="w")
-        tk.Entry(meta_frame, textvariable=self.input_doc_title, width=25).grid(row=0, column=1, padx=5, sticky="ew")
-        
-        tk.Label(meta_frame, text="作者/機構:").grid(row=0, column=2, sticky="w")
-        tk.Entry(meta_frame, textvariable=self.input_doc_author, width=20).grid(row=0, column=3, padx=5, sticky="ew")
-        
-        tk.Label(meta_frame, text="原文連結 URL:").grid(row=1, column=0, sticky="w", pady=2)
-        tk.Entry(meta_frame, textvariable=self.input_source_url, width=55).grid(row=1, column=1, columnspan=3, padx=5, sticky="ew", pady=2)
-        meta_frame.grid_columnconfigure(1, weight=1)
-        meta_frame.grid_columnconfigure(3, weight=1)
-
-        tk.Label(self.new_generation_controls_frame, text="已存在的簡報檔案 (選填):").grid(row=3, column=0, sticky="w", pady=2)
-        tk.Entry(self.new_generation_controls_frame, textvariable=self.slides_file_path, width=80).grid(row=4, column=0, padx=(0, 5), columnspan=2, sticky="ew")
-        tk.Button(self.new_generation_controls_frame, text="瀏覽...", command=self.browse_slides_file).grid(row=4, column=2)
-        tk.Label(self.new_generation_controls_frame, text="客製化需求 (選填):").grid(row=5, column=0, sticky="w", pady=(10, 2))
-        self.custom_instruction_text = tk.Text(self.new_generation_controls_frame, height=3, width=80, wrap=tk.WORD)
-        self.custom_instruction_text.grid(row=6, column=0, padx=(0,5), columnspan=3, sticky="ew")
-
         # --- Model/API Configuration Frame (conditionally shown) ---
         self.model_config_frame = tk.Frame(self.new_generation_controls_frame)
         self.model_config_frame.grid(row=7, column=0, columnspan=3, sticky="w", pady=5)
@@ -217,6 +167,15 @@ class App(tk.Tk):
         self.api_base_entry.pack(side="left", padx=(0, 5))
         self.detect_btn = tk.Button(self.api_config_frame, text="偵測", command=self._detect_local_models, bg="#e0f0e0")
         self.detect_btn.pack(side="left", padx=(0, 5))
+        
+        # Endpoint selection (when multiple endpoints available)
+        self.endpoint_select_frame = tk.Frame(self.model_config_frame)
+        self.endpoint_select_frame.pack_forget()  # Hidden by default
+        tk.Label(self.endpoint_select_frame, text="選擇端點:").pack(side="left", padx=(0, 10))
+        self.endpoint_var = tk.StringVar()
+        self.endpoint_combobox = ttk.Combobox(self.endpoint_select_frame, textvariable=self.endpoint_var, state="readonly", width=50)
+        self.endpoint_combobox.pack(side="left")
+        self.endpoint_combobox.bind("<<ComboboxSelected>>", self._on_endpoint_selected)
         
         # Model selection (shown for agents that support model selection)
         model_selection_frame = tk.Frame(self.model_config_frame)
@@ -267,22 +226,88 @@ class App(tk.Tk):
         self.toggle_mode_inputs()
 
 
-    def open_link(self, url): webbrowser.open_new_tab(url)
-    def browse_source_file(self): 
-        filepath = filedialog.askopenfilename(title="選擇原文書檔案", filetypes=(("Markdown & Text", "*.md *.txt"), ("All files", "*.*")))
+    def _on_mousewheel(self, event):
+        self.image_canvas.yview_scroll(int(-1*(event.delta/120)), "units")
+
+    def open_link(self, url: str):
+        webbrowser.open(url)
+
+    def browse_files(self):
+        filepath = filedialog.askopenfilename(filetypes=[("All Files", "*.*"), ("PDF", "*.pdf"), ("Word", "*.docx"), ("Text", "*.txt"), ("Markdown", "*.md"), ("HTML", "*.html")])
         if filepath: self.source_file_path.set(os.path.abspath(filepath))
 
-    def browse_slides_file(self): 
-        filepath = filedialog.askopenfilename(title="選擇簡報檔案", filetypes=(("Markdown & Text", "*.md *.txt"), ("All files", "*.*")))
-        if filepath: self.slides_file_path.set(os.path.abspath(filepath))
-
     def browse_resume_output_dir(self):
-        dirpath = filedialog.askdirectory(title="選擇現有輸出資料夾")
+        dirpath = filedialog.askdirectory()
         if dirpath: self.resume_output_dir_path.set(os.path.abspath(dirpath))
 
     def browse_guide_html(self):
-        filepath = filedialog.askopenfilename(title="選擇 guide.html", filetypes=(("HTML files", "*.html"), ("All files", "*.*")))
+        filepath = filedialog.askopenfilename(filetypes=[("HTML", "*.html"), ("All Files", "*.*")])
         if filepath: self.guide_html_path.set(os.path.abspath(filepath))
+
+    def browse_slides_file(self):
+        filepath = filedialog.askopenfilename(filetypes=[("JSON", "*.json"), ("All Files", "*.*")])
+        if filepath: self.slides_file_path.set(os.path.abspath(filepath))
+
+    def load_slides_from_html(self):
+        filepath = self.guide_html_path.get()
+        if not filepath or not os.path.exists(filepath):
+            messagebox.showwarning("警告", "請先選擇 guide.html 檔案")
+            return
+
+        # Clear previous data
+        for widget in self.slide_rows_frame.winfo_children():
+            widget.destroy()
+        self.slide_image_map = {}
+
+        try:
+            html_content = open(filepath, "r", encoding="utf-8").read()
+            slide_pattern = re.compile(r'<div[^>]*class="[^"]*slide[^"]*"[^>]*>(.*?)</div>', re.IGNORECASE | re.DOTALL)
+            slide_blocks = slide_pattern.findall(html_content)
+            print(f"Found {len(slide_blocks)} potential slides.")
+
+            row_index = 0
+            for idx, block in enumerate(slide_blocks):
+                slide_id = f"slide-{idx+1:02d}"
+                
+                row_frame = tk.Frame(self.slide_rows_frame)
+                row_frame.pack(fill="x", pady=2)
+
+                tk.Label(row_frame, text=f"頁面 {idx+1}:", font=("Arial", 11, "bold"), anchor="w").grid(row=0, column=0, padx=(0,5), sticky="w")
+                
+                tk.Label(row_frame, text="對應圖片:", anchor="e").grid(row=0, column=1)
+                img_var = tk.StringVar()
+                img_entry = tk.Entry(row_frame, textvariable=img_var, width=50)
+                img_entry.grid(row=0, column=2, padx=5)
+                
+                btn = tk.Button(row_frame, text="瀏覽", command=lambda p=img_var: self._browse_image_for_slide(p))
+                btn.grid(row=0, column=3, padx=2)
+                
+                self.slide_image_map[slide_id] = img_var
+                row_index += 1
+
+            if row_index == 0:
+                messagebox.showinfo("提示", "未能自動解析出任何頁面區塊，請確認 HTML 格式。")
+            else:
+                messagebox.showinfo("成功", f"已解析 {row_index} 個頁面。請為每個頁面選擇對應的圖片。")
+        except Exception as e:
+            messagebox.showerror("錯誤", f"讀取檔案時發生錯誤:\n{str(e)}")
+
+    def _browse_image_for_slide(self, var: tk.StringVar):
+        filepath = filedialog.askopenfilename(filetypes=[("Images", "*.png *.jpg *.jpeg *.gif *.bmp"), ("All Files", "*.*")])
+        if filepath: var.set(os.path.abspath(filepath))
+
+    def toggle_mode_inputs(self):
+        mode = self.mode_selection.get()
+        self.new_generation_controls_frame.pack_forget()
+        self.resume_output_dir_frame.pack_forget()
+        self.embed_images_frame.pack_forget()
+        
+        if mode == "new_generation":
+            self.new_generation_controls_frame.pack(fill="both", expand=True, pady=10)
+        elif mode == "resume":
+            self.resume_output_dir_frame.pack(fill="x", pady=10)
+        elif mode == "embed_images":
+            self.embed_images_frame.pack(fill="both", expand=True, pady=10)
 
     def _update_agent_status(self, *args):
         """Update agent availability indicator based on selected agent."""
@@ -295,7 +320,13 @@ class App(tk.Tk):
         # For OpenAI-compatible agents, check local endpoints first
         if agent_name in ["openai-compatible", "ollama", "llamacpp"]:
             try:
-                endpoints = default_detector.detect_all()
+                # Use cached detection if available (from _auto_detect_local_models)
+                if hasattr(self, '_cached_endpoints'):
+                    endpoints = self._cached_endpoints
+                else:
+                    endpoints = default_detector.detect_all()
+                    self._cached_endpoints = endpoints  # Cache for later use
+                
                 available = [e for e in endpoints if e.available]
                 
                 if available:
@@ -324,7 +355,6 @@ class App(tk.Tk):
     def _update_models_for_agent(self, *args):
         """Update model dropdown based on selected agent."""
         from agents import AgentFactory
-        from agents.openai_compatible import OpenAICompatibleAdapter
         from agents.model_detector import default_detector
         
         agent_name = self.agent_type_var.get()
@@ -407,6 +437,7 @@ class App(tk.Tk):
         
         try:
             endpoints = default_detector.detect_all()
+            self._cached_endpoints = endpoints  # Cache for later use
             available = [e for e in endpoints if e.available]
             
             if available:
@@ -444,6 +475,7 @@ class App(tk.Tk):
         
         # Run detection
         endpoints = default_detector.detect_all()
+        self._cached_endpoints = endpoints  # Cache for later use
         available = [e for e in endpoints if e.available]
         
         if available:
@@ -458,684 +490,50 @@ class App(tk.Tk):
             self.api_base_var.set(base_url)
             
             # Show model info
-            models = [m.name for m in first_endpoint.models] if first_endpoint.models else []
-            status_msg = f"找到 {first_endpoint.type} 於 {base_url}\n可用模型: {', '.join(models[:5])}"  
-            messagebox.showinfo("偵測結果", status_msg)
+            if first_endpoint.models:
+                model_names = [m.name for m in first_endpoint.models]
+                print(f"[Detect] Found models: {', '.join(model_names)}")
+            
+            # Update model dropdown
+            self.after(0, lambda: self._update_model_comboboxes([m.name for m in first_endpoint.models] if first_endpoint.models else []))
+            
+            messagebox.showinfo("偵測完成", f"發現 {len(available)} 個可用端點:\n\n" + 
+                              "\n".join(f"- {ep.type} @ {ep.url}" for ep in available))
         else:
-            messagebox.showwarning("偵測結果", "未偵測到可用的本地模型\n\n請確保:\n- Ollama 正在執行 (預設 port 11434)\n- 或 llama.cpp server 正在執行 (預設 port 8080)")
+            messagebox.showwarning("偵測結果", "未發現任何可用的本地 AI 模型服務。\n\n請確認:\n- Ollama 已安裝並運行\n- 或 llama.cpp server 已啟動")
     
-    def _show_tooltip(self, text):
-        """Show simple tooltip message."""
-        messagebox.showinfo("Agent 不可用", text)
-    
-    def toggle_mode_inputs(self):
-        # Forget everything first
-        self.new_generation_controls_frame.pack_forget()
-        self.resume_output_dir_frame.pack_forget()
-        self.embed_images_frame.pack_forget()
-        self.run_button.pack_forget()
-        self.progress_label.pack_forget()
-        self.console.pack_forget()
-
-        selected_mode = self.mode_selection.get()
-        if selected_mode == "new_generation":
-            self.new_generation_controls_frame.pack(fill="x")
-            self.run_button.pack(pady=15, fill="x", ipady=5)
-            self.progress_label.pack(fill="x", anchor="w")
-            self.console.pack(pady=5, fill="both", expand=True)
-        elif selected_mode == "resume":
-            self.resume_output_dir_frame.pack(fill="x")
-            self.run_button.pack(pady=15, fill="x", ipady=5)
-            self.progress_label.pack(fill="x", anchor="w")
-            self.console.pack(pady=5, fill="both", expand=True)
-        elif selected_mode == "embed_images":
-            self.embed_images_frame.pack(fill="both", expand=True)
-            # Note: "run_button" and "console" are NOT used in this mode, 
-            # as it has its own "Generate" button and logic.
-
-    def load_slides_from_html(self):
-        html_path = self.guide_html_path.get()
-        if not html_path or not os.path.exists(html_path):
-            messagebox.showerror("錯誤", "請選擇有效的 guide.html 檔案。")
-            return
-
-        # Clear existing list
-        for widget in self.scrollable_frame.winfo_children():
-            widget.destroy()
-        self.slide_image_map = {}
-
-        try:
-            with open(html_path, "r", encoding="utf-8") as f:
-                content = f.read()
-            
-            # Updated regex to find slides with either <h1> or <h2>. 
-            # Matches <h1>Slide X</h1> or <h2>Slide X</h2>
-            matches = re.findall(r'<h[12]>Slide\s+(.*?)</h[12]>', content)
-            
-            if not matches:
-                messagebox.showinfo("提示", "在檔案中找不到 '<h1>Slide X</h1>' 或 '<h2>Slide X</h2>' 格式的標題。")
-                return
-
-            tk.Label(self.scrollable_frame, text=f"找到 {len(matches)} 頁投影片", font=("Arial", 10, "bold")).pack(pady=5, anchor="w")
-
-            for slide_id in matches:
-                row_frame = tk.Frame(self.scrollable_frame, pady=2)
-                row_frame.pack(fill="x", expand=True)
-                
-                tk.Label(row_frame, text=f"Slide {slide_id}:", width=10, anchor="w").pack(side="left")
-                
-                path_var = tk.StringVar()
-                self.slide_image_map[slide_id] = path_var
-                
-                entry = tk.Entry(row_frame, textvariable=path_var)
-                entry.pack(side="left", fill="x", expand=True, padx=5)
-                
-                btn = tk.Button(row_frame, text="選擇圖片", command=lambda sv=path_var: self.browse_image_for_slide(sv))
-                btn.pack(side="left")
-
-            # Attempt to auto-match images in the same folder
-            self.auto_match_images(html_path, matches)
-
-        except Exception as e:
-            messagebox.showerror("錯誤", f"讀取 HTML 時發生錯誤: {e}")
-
-    def browse_image_for_slide(self, string_var):
-        f = filedialog.askopenfilename(filetypes=(("Images", "*.png *.jpg *.jpeg *.webp"), ("All files", "*.*")))
-        if f: string_var.set(f)
-
-    def auto_match_images(self, html_path, slide_ids):
-        """Attempts to find images like 'Slide 1.png' or '1.png' in the same folder."""
-        folder = os.path.dirname(html_path)
-        count = 0
-        for sid in slide_ids:
-            # Try various naming conventions
-            candidates = [
-                f"{sid}.png", f"{sid}.jpg", 
-                f"Slide {sid}.png", f"Slide {sid}.jpg",
-                f"slide_{sid}.png", f"slide_{sid}.jpg" # standard export format often used
-            ]
-            for cand in candidates:
-                full_path = os.path.join(folder, cand)
-                if os.path.exists(full_path):
-                    self.slide_image_map[sid].set(full_path)
-                    count += 1
-                    break
-        if count > 0:
-             tk.Label(self.scrollable_frame, text=f"已自動匹配 {count} 張圖片", fg="green").pack(anchor="w")
-
-    def get_html_style_script(self):
-        return """
-            <style>
-                :root {
-                    --header-height: 100px; /* Initial large height */
-                    --tab-height: 50px;
-                    --bg:#ffffff; --fg:#0f172a; --muted:#64748b; --card:#f8fafc; --accent:#2563eb;
-                    --border:#e2e8f0;
-                }
-
-                /* Transitions */
-                header, header h1, header .container {
-                    transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
-                }
-
-                .img-text-toggle-btn {
-                    padding: 6px 12px;
-                    cursor: pointer;
-                    background: #4f46e5;
-                    color: white;
-                    border: none;
-                    border-radius: 6px;
-                    font-size: 14px;
-                    transition: background 0.2s;
-                }
-                .img-text-toggle-btn:hover { background: #4338ca; }
-                
-                .slide-img-container img {
-                    max-width: 100%;
-                    height: auto;
-                    border: 1px solid #e5e7eb;
-                    border-radius: 8px;
-                    box-shadow: 0 2px 4px rgba(0,0,0,0.05);
-                }
-
-                /* --- Header Styling (Dynamic) --- */
-                header {
-                    position: sticky; 
-                    top: 0; 
-                    z-index: 1000; 
-                    background: var(--bg);
-                    border-bottom: 1px solid var(--border);
-                    padding: 20px 0; /* Initial comfortable padding */
-                    width: 100%;
-                }
-                
-                header .container {
-                    display: flex;
-                    align-items: center;
-                    justify-content: space-between;
-                    max-width: 1100px;
-                    margin: 0 auto;
-                    padding: 0 16px;
-                }
-
-                header h1 {
-                    margin: 0; 
-                    font-size: 22px; /* Initial Title Size */
-                    line-height: 1.3;
-                    color: var(--fg);
-                    font-weight: 700;
-                }
-
-                /* Scrolled State (Compact) */
-                body.scrolled-mode header {
-                    padding: 8px 0;
-                    background: rgba(255, 255, 255, 0.95);
-                    backdrop-filter: blur(10px);
-                    box-shadow: 0 4px 20px -5px rgba(0,0,0,0.1);
-                }
-                
-                body.scrolled-mode header h1 {
-                    font-size: 15px; /* Tiny Title */
-                    color: var(--muted);
-                    font-weight: 600;
-                }
-
-                /* Hide subtitle in header (moved to body) */
-                header .subtitle { display: none !important; }
-
-
-                /* --- Desktop Layout --- */
-                .page {
-                    display: flex;
-                    border-bottom: 1px solid var(--border);
-                    padding: 40px 0;
-                    margin-bottom: 0;
-                    align-items: flex-start;
-                }
-                
-                .slide {
-                    flex: 1;
-                    padding-right: 30px;
-                    border-right: 1px solid var(--border);
-                    min-width: 0;
-                    position: sticky;
-                    /* Stick below the header */
-                    top: calc(var(--header-height) + 20px);
-                    height: fit-content; 
-                    max-height: calc(100vh - var(--header-height) - 40px);
-                    overflow-y: auto;
-                }
-                
-                .notes {
-                    flex: 1;
-                    padding-left: 30px;
-                    min-width: 0;
-                }
-                
-                /* --- Mobile Layout --- */
-                @media (max-width: 768px) {
-                    :root {
-                        --header-height: 60px; /* Reset for mobile calc */
-                    }
-
-                    .page { 
-                        display: block !important; 
-                        padding-top: 0 !important; 
-                        border-bottom: 8px solid #f1f5f9 !important; 
-                        padding-bottom: 30px;
-                    }
-                    .slide { 
-                        padding-right: 0 !important; 
-                        border-right: none !important; 
-                        border-bottom: none !important;
-                        margin-bottom: 0 !important; 
-                        position: static !important; 
-                        max-height: none !important;
-                    }
-                    .notes { 
-                        padding-left: 0 !important; 
-                        margin-top: 10px;
-                    }
-                    .slide-controls { display: none !important; }
-                    
-                    /* Mobile Sticky Tab Bar - Improved */
-                    .mobile-tab-bar { 
-                        display: flex !important; 
-                        position: sticky;
-                        top: var(--header-height); /* Stick exactly under header */
-                        z-index: 900;
-                        background: rgba(255, 255, 255, 0.98);
-                        backdrop-filter: blur(8px);
-                        padding: 10px 16px;
-                        border-bottom: 1px solid var(--border);
-                        margin: 0 -16px 20px -16px; /* Full width bleed */
-                        box-shadow: 0 4px 6px -4px rgba(0,0,0,0.05);
-                        transition: top 0.3s;
-                    }
-
-                    /* Ensure content doesn't get hidden under tabs when jumping */
-                    .slide-content-wrapper {
-                        scroll-margin-top: 160px;
-                    }
-                }
-                
-                .mobile-tab-bar { display: none; }
-            </style>
-            <script>
-                function toggleImageText(id) {
-                    var imgDiv = document.getElementById('img-view-' + id);
-                    var textDiv = document.getElementById('text-view-' + id);
-                    var btn = document.getElementById('btn-toggle-' + id);
-                    
-                    if (imgDiv.style.display !== 'none') {
-                        imgDiv.style.display = 'none';
-                        textDiv.style.display = 'block';
-                        btn.innerText = '切換為圖片 (Show Image)';
-                    } else {
-                        imgDiv.style.display = 'block';
-                        textDiv.style.display = 'none';
-                        btn.innerText = '切換為文字 (Show Text)';
-                    }
-                }
-
-                // Scroll Handler for Header Shrinking
-                function handleScroll() {
-                    const scrollY = window.scrollY;
-                    const body = document.body;
-                    const header = document.querySelector('header');
-                    
-                    if (scrollY > 50) {
-                        if (!body.classList.contains('scrolled-mode')) {
-                            body.classList.add('scrolled-mode');
-                            // Update variable for sticky calculations
-                            document.documentElement.style.setProperty('--header-height', header.offsetHeight + 'px');
-                        }
-                    } else {
-                        if (body.classList.contains('scrolled-mode')) {
-                            body.classList.remove('scrolled-mode');
-                            // Reset variable
-                            document.documentElement.style.setProperty('--header-height', header.offsetHeight + 'px');
-                        }
-                    }
-                }
-
-                // Init header height
-                function initHeader() {
-                    const header = document.querySelector('header');
-                    if(header) {
-                        document.documentElement.style.setProperty('--header-height', header.offsetHeight + 'px');
-                    }
-                }
-
-                window.addEventListener('scroll', handleScroll);
-                window.addEventListener('load', initHeader);
-                window.addEventListener('resize', initHeader);
-
-                document.addEventListener('DOMContentLoaded', function() {
-                    
-                    // 1. Move Subtitle to Content Area
-                    const headerSubtitle = document.querySelector('header .subtitle');
-                    const mainContainer = document.querySelector('main.container');
-                    
-                    if (headerSubtitle && mainContainer && !document.querySelector('.moved-subtitle')) {
-                        const newSubtitle = headerSubtitle.cloneNode(true);
-                        newSubtitle.classList.add('moved-subtitle');
-                        newSubtitle.style.cssText = `
-                            display: block; margin: 20px 0 30px 0; color: var(--muted); font-size: 15px; 
-                            line-height: 1.6; border-left: 4px solid var(--accent); padding-left: 15px;
-                            background: var(--card); padding: 15px; border-radius: 0 8px 8px 0;
-                        `;
-                        mainContainer.insertBefore(newSubtitle, mainContainer.firstChild);
-                    }
-
-                    // 2. Mobile Tabs Logic
-                    const pages = document.querySelectorAll('.page');
-                    pages.forEach(page => {
-                        const slideId = page.id.replace('page-', '');
-                        
-                        // Wrap content for scroll margin fix
-                        const imgContainer = document.getElementById('img-view-' + slideId);
-                        const textContainer = document.getElementById('text-view-' + slideId);
-                        if(imgContainer) imgContainer.classList.add('slide-content-wrapper');
-                        if(textContainer) textContainer.classList.add('slide-content-wrapper');
-
-                        // Create Tab Bar
-                        const tabBar = document.createElement('div');
-                        tabBar.className = 'mobile-tab-bar';
-                        
-                        const modes = [
-                            { label: '🖼️ 圖片', value: 'img', icon: '' },
-                            { label: '📄 文字', value: 'text', icon: '' },
-                            { label: '📝 備忘', value: 'notes', icon: '' }
-                        ];
-                        
-                        const btns = {};
-
-                        modes.forEach(mode => {
-                            const btn = document.createElement('button');
-                            btn.innerHTML = mode.label;
-                            // Base Tab Button Style
-                            btn.style.cssText = `
-                                flex: 1; padding: 8px; font-size: 14px; border: none; 
-                                background: transparent; cursor: pointer; color: var(--muted); 
-                                transition: all 0.2s; margin: 0 4px; border-radius: 8px; font-weight: 500;
-                            `;
-                            
-                            btn.onclick = (e) => {
-                                e.preventDefault();
-                                switchTab(mode.value);
-                                // Optional: scroll to top of section slightly if needed
-                            };
-                            
-                            tabBar.appendChild(btn);
-                            btns[mode.value] = btn;
-                        });
-
-                        page.insertBefore(tabBar, page.firstChild);
-
-                        const notesContainer = page.querySelector('.notes');
-                        if(notesContainer) notesContainer.classList.add('slide-content-wrapper');
-                        const desktopToggle = page.querySelector('.slide-controls');
-
-                        function switchTab(mode) {
-                            // Update Buttons
-                            Object.values(btns).forEach(b => {
-                                b.style.background = 'transparent';
-                                b.style.color = 'var(--muted)';
-                                b.style.boxShadow = 'none';
-                            });
-                            
-                            // Active State (Pill style)
-                            if(btns[mode]) {
-                                btns[mode].style.background = '#e0e7ff'; // Light Indigo
-                                btns[mode].style.color = '#4338ca'; // Indigo 700
-                                btns[mode].style.boxShadow = 'inset 0 0 0 1px #c7d2fe';
-                            }
-
-                            // Visibility
-                            if(imgContainer) imgContainer.style.display = (mode === 'img' ? 'block' : 'none');
-                            if(textContainer) textContainer.style.display = (mode === 'text' ? 'block' : 'none');
-                            if(notesContainer) notesContainer.style.display = (mode === 'notes' ? 'block' : 'none');
-                            
-                            if(desktopToggle) desktopToggle.style.display = 'none';
-                        }
-
-                        // Init
-                        if (window.innerWidth <= 768) {
-                            switchTab('img');
-                        }
-                    });
-                    
-                    // Recalculate header height one more time after DOM manip
-                    setTimeout(handleScroll, 100);
-                });
-            </script>
-            """
-    def update_legacy_html(self):
-        filepath = filedialog.askopenfilename(
-            title="選擇要升級的舊版 HTML (slide.html)", 
-            filetypes=(("HTML files", "*.html"), ("All files", "*.*"))
-        )
-        if not filepath: return
-
-        try:
-            with open(filepath, "r", encoding="utf-8") as f:
-                content = f.read()
-
-            # Identify the old style/script block using regex
-            pattern = re.compile(r'<style>\s*:root\s*\{.*?--header-height.*?</script>', re.DOTALL)
-            
-            if pattern.search(content):
-                new_block = self.get_html_style_script()
-                new_content = pattern.sub(new_block, content)
-                
-                # Create backup
-                backup_path = filepath + ".bak"
-                with open(backup_path, "w", encoding="utf-8") as f_bak:
-                    f_bak.write(content)
-                
-                # Write new content
-                with open(filepath, "w", encoding="utf-8") as f_out:
-                    f_out.write(new_content)
-                
-                messagebox.showinfo("成功", f"檔案已升級！\n舊檔案已備份為: {os.path.basename(backup_path)}")
-                webbrowser.open(filepath)
-            else:
-                messagebox.showwarning("失敗", "無法識別舊版的樣式區塊，請確認這是由 PPTPlaner 生成的檔案。")
-
-        except Exception as e:
-            messagebox.showerror("錯誤", f"升級過程發生錯誤: {e}")
-
-
-    def generate_image_slide_html(self):
-        html_path = self.guide_html_path.get()
-        if not html_path or not os.path.exists(html_path):
-            messagebox.showerror("錯誤", "原始 guide.html 路徑無效。")
-            return
-
-        output_dir = os.path.dirname(html_path)
-        slides_dir = os.path.join(output_dir, "slides")
-        
-        try:
-            # 1. Prepare Images (Copy to slides dir with standard names)
-            if not os.path.exists(slides_dir): os.makedirs(slides_dir)
-            
-            for slide_id, path_var in self.slide_image_map.items():
-                src_img = path_var.get()
-                if src_img and os.path.exists(src_img):
-                    # Determine extension
-                    _, ext = os.path.splitext(src_img)
-                    if not ext: ext = ".png"
-                    
-                    dest_img = os.path.join(slides_dir, f"slide_{slide_id}{ext}")
-                    shutil.copy2(src_img, dest_img)
-
-            # 2. Run Build Script
-            build_script = os.path.join("scripts", "build_guide.py")
-            cmd = [sys.executable, build_script, f"--output-dir={output_dir}"]
-            
-            # Pass manual Source URL if provided (Non-destructive to overview.md)
-            source_url = self.source_url_var.get().strip()
-            if source_url:
-                cmd.append(f"--manual-source-url={source_url}")
-            
-            # Run build
-            subprocess.check_call(cmd)
-
-            # 3. Inject YouTube (Post-processing on the FRESHLY built HTML)
-            yt_id = self.youtube_id_var.get().strip()
-            if yt_id:
-                # Simple parser
-                if "v=" in yt_id:
-                    try: yt_id = yt_id.split("v=")[1].split("&")[0]
-                    except: pass
-                elif "youtu.be/" in yt_id:
-                    try: yt_id = yt_id.split("youtu.be/")[1].split("?")[0]
-                    except: pass
-                
-                video_html = f"""
-                <div class="video-section" style="margin-bottom: 30px; margin-top: 10px;">
-                    <style>
-                        .video-responsive-wrapper {{
-                            position: relative;
-                            padding-bottom: 56.25%; /* 16:9 Ratio */
-                            height: 0;
-                            overflow: hidden;
-                            border-radius: 12px;
-                            background: #000;
-                            box-shadow: 0 4px 10px rgba(0,0,0,0.1);
-                        }}
-                        .video-responsive-wrapper iframe {{
-                            position: absolute;
-                            top: 0;
-                            left: 0;
-                            width: 100%;
-                            height: 100%;
-                            border: 0;
-                        }}
-                    </style>
-                    <div class="video-responsive-wrapper">
-                        <iframe 
-                            src="https://www.youtube.com/embed/{yt_id}?rel=0" 
-                            title="YouTube video player" 
-                            frameborder="0" 
-                            allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share" 
-                            allowfullscreen>
-                        </iframe>
-                    </div>
-                    <div class="hr" style="margin-top: 20px;"></div>
-                </div>
-                """
-                
-                guide_file = os.path.join(output_dir, "guide.html")
-                if os.path.exists(guide_file):
-                    content = Path(guide_file).read_text(encoding="utf-8")
-                    # Inject after main container start
-                    if '<main class="container">' in content:
-                        content = content.replace('<main class="container">', f'<main class="container">\n{video_html}', 1)
-                        Path(guide_file).write_text(content, encoding="utf-8")
-
-            messagebox.showinfo("成功", "已重新生成 guide.html (包含圖片與設定)！")
-            webbrowser.open(os.path.join(output_dir, "guide.html"))
-
-        except Exception as e:
-            messagebox.showerror("錯誤", f"生成過程發生錯誤: {e}")
-
-    def log_message(self, message): self.console.config(state="normal"); self.console.insert(tk.END, message); self.console.see(tk.END); self.console.config(state="disabled"); self.update_idletasks()
-
-    def _show_pause_dialog(self):
-        # Log to console
-        self.log_message("\n====================\n")
-        self.log_message("[PAUSE_REQUIRED] 核心程序已暫停，等待使用者操作。\n")
-        self.log_message("====================\n")
-
-        # Create a Toplevel window for the dialog
-        dialog = tk.Toplevel(self)
-        dialog.title("程序已暫停 (需要操作)")
-        dialog.transient(self)
-        dialog.grab_set()
-
-        message = (
-            "檢測到核心程序已暫停 (可能是由於 API 錯誤或其他異常)。\n"
-            "您可以選擇嘗試繼續，或切換模型後再繼續。\n"
-        )
-        tk.Label(dialog, text=message, padx=20, pady=10, justify=tk.LEFT).pack()
-
-        # Model selection dropdown
-        model_frame = tk.Frame(dialog)
-        model_frame.pack(pady=5)
-        tk.Label(model_frame, text="選擇 Gemini 模型:").pack(side=tk.LEFT, padx=5)
-        
-        self.selected_gemini_model_var = tk.StringVar(value=self.current_gemini_model if self.current_gemini_model else self.available_gemini_models[0])
-        self.model_combobox = ttk.Combobox(model_frame, textvariable=self.selected_gemini_model_var, values=self.available_gemini_models, state="readonly")
-        self.model_combobox.pack(side=tk.LEFT, padx=5)
-
-        # Actions
-        def on_resume(switch_model=False):
-            if switch_model:
-                new_model = self.selected_gemini_model_var.get()
-                self.current_gemini_model = new_model
-                self.log_message(f"已設定新模型: {new_model}\n")
-                # Write to .runtime_config.json
-                try:
-                    with open(".runtime_config.json", "w", encoding="utf-8") as f:
-                        json.dump({"gemini_model": new_model}, f)
-                except Exception as e:
-                    self.log_message(f"錯誤: 無法寫入運行時配置: {e}\n")
-
-            # Remove .pause_lock to signal orchestrate.py to resume
-            if os.path.exists(".pause_lock"):
-                try:
-                    os.remove(".pause_lock")
-                    self.log_message("已解除暫停鎖定，程序繼續執行...\n")
-                except Exception as e:
-                    self.log_message(f"錯誤: 無法移除暫停鎖定檔: {e}\n")
-            
-            dialog.destroy()
-            self.quota_event.set()
-
-        # Continue button
-        tk.Button(dialog, text="繼續 (使用當前模型)", command=lambda: on_resume(False)).pack(pady=(10, 5))
-
-        # Switch Model button
-        tk.Button(dialog, text="切換模型並繼續", command=lambda: on_resume(True)).pack(pady=(0, 10))
-
-        # Center dialog
-        self.update_idletasks()
-        x = self.winfo_x() + (self.winfo_width() // 2) - (dialog.winfo_width() // 2)
-        y = self.winfo_y() + (self.winfo_height() // 2) - (dialog.winfo_height() // 2)
-        dialog.geometry(f"+{x}+{y}")
-        
-        self.wait_window(dialog)
-
-    def run_in_thread(self, command):
-        # Always set the event before starting a new execution block to ensure it's unblocked initially
-        self.quota_event.set()
-        quota_reset_time_str = None # Initialize outside loop
-        
-        # Ensure stale lock files are removed before starting
-        if os.path.exists(".pause_lock"):
-             try: os.remove(".pause_lock")
-             except: pass
-        if os.path.exists(".runtime_config.json"):
-             try: os.remove(".runtime_config.json")
-             except: pass
-
-        with subprocess.Popen(command, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True, encoding='utf-8', errors='replace', bufsize=1, universal_newlines=True) as process:
-            for line in iter(process.stdout.readline, ''):
-                print(line, end='')
-                self.log_message(line)
-                
-                if "[PAUSE_REQUIRED]" in line:
-                    self.quota_event.clear()
-                    self.after(0, self._show_pause_dialog)
-                    self.quota_event.wait()
-        
-        # Explicitly wait for the process to terminate and get the return code
-        return_code = process.wait()
-
-        self.log_message("\n====================\n");
-        if return_code == 0:
-            self.log_message("執行成功！\n")
-        else:
-            self.log_message(f"執行失敗，返回碼：{return_code}\n")
-        self.run_button.config(state="normal", text="開始生成")
+    def _show_tooltip(self, text: str):
+        """Show tooltip when hovering over status label."""
+        # Simple tooltip implementation
+        tooltip_window = tk.Toplevel(self)
+        tooltip_window.wm_attributes("-topmost", True)
+        tooltip_window.wm_overrideredirect(True)
+        tooltip_window.geometry("+{}+{}".format(
+            self.winfo_rootx() + 150,
+            self.winfo_rooty() + 50
+        ))
+        label = tk.Label(tooltip_window, text=text, bg="#ffffe0", fg="#333",
+                        borderwidth=1, relief="solid", wraplength=300)
+        label.pack()
+        tooltip_window.after(3000, tooltip_window.destroy)
 
     def run_orchestration(self):
-        selected_mode = self.mode_selection.get()
-        command = []
+        import subprocess
+        import sys
 
-        # Set the current model from the initial selection
-        if selected_mode == "new_generation":
-            self.current_gemini_model = self.initial_gemini_model_var.get()
-        elif selected_mode == "resume":
-            self.current_gemini_model = self.resume_gemini_model_var.get()
-
-        if selected_mode == "new_generation":
-            source_file = self.source_file_path.get()
-            slides_file = self.slides_file_path.get()
-            custom_instruction = self.custom_instruction_text.get("1.0", tk.END).strip()
+        if self.mode_selection.get() == "new_generation":
+            if not self.source_file_path.get():
+                messagebox.showwarning("警告", "請選擇要分析的檔案")
+                return
             
-            # Manual metadata
+            # Prepare command
+            command = [sys.executable, "scripts/orchestrate.py"]
+            command.extend(["--source", self.source_file_path.get()])
+            
+            # Add optional arguments
             m_title = self.input_doc_title.get().strip()
             m_author = self.input_doc_author.get().strip()
             m_url = self.input_source_url.get().strip()
-
-            plan_reworks = self.plan_reworks_spinbox.get()
-            slide_reworks = self.slide_reworks_spinbox.get()
-            memo_reworks = self.memo_reworks_spinbox.get()
-            exec_reworks = self.exec_reworks_spinbox.get()
-
-            if not source_file:
-                self.log_message("錯誤：請務必選擇原文書檔案。\n")
-                return
-            
-            orchestrate_script = os.path.join("scripts", "orchestrate.py")
-            if not os.path.exists(orchestrate_script):
-                self.log_message(f"錯誤：找不到主腳本 {orchestrate_script}。\n")
-                return
-
-            command = [sys.executable, orchestrate_script, "--source", source_file]
             
             if m_title: command.extend(["--manual-title", m_title])
             if m_author: command.extend(["--manual-author", m_author])
@@ -1143,6 +541,10 @@ class App(tk.Tk):
 
             if not self.generate_svg.get():
                 command.append("--no-svg")
+            
+            custom_instruction = self.custom_instruction_text.get("1.0", "end-1c").strip()
+            slides_file = self.slides_file_path.get().strip()
+            
             if custom_instruction: command.extend(["--custom-instruction", custom_instruction])
             if slides_file: command.extend(["--plan-from-slides", slides_file])
             # Only pass model for non-OpenAI-compatible agents
@@ -1160,28 +562,33 @@ class App(tk.Tk):
             
             # Add rework counts if they are valid integers
             try:
-                if int(plan_reworks) >= 0: command.extend(["--plan-reworks", plan_reworks])
+                if int(self.plan_reworks_spinbox.get()) >= 0: command.extend(["--plan-reworks", self.plan_reworks_spinbox.get()])
             except ValueError:
                 self.log_message("警告：規劃修正次數不是有效的數字，將使用預設值。\n")
-
+            
             try:
-                if int(slide_reworks) >= 0: command.extend(["--slide-reworks", slide_reworks])
+                if int(self.slide_reworks_spinbox.get()) >= 0: command.extend(["--slide-reworks", self.slide_reworks_spinbox.get()])
             except ValueError:
                 self.log_message("警告：簡報修正次數不是有效的數字，將使用預設值。\n")
             
             try:
-                if int(memo_reworks) >= 0: command.extend(["--memo-reworks", memo_reworks])
+                if int(self.memo_reworks_spinbox.get()) >= 0: command.extend(["--memo-reworks", self.memo_reworks_spinbox.get()])
             except ValueError:
                 self.log_message("警告：備忘稿修正次數不是有效的數字，將使用預設值。\n")
-
+            
             try:
-                if int(exec_reworks) >= 0: command.extend(["--agent-retries", exec_reworks])
+                if int(self.exec_reworks_spinbox.get()) >= 0: command.extend(["--exec-reworks", self.exec_reworks_spinbox.get()])
             except ValueError:
-                self.log_message("警告：執行重試次數不是有效的數字，將使用預設值。\n")
+                self.log_message("警告：執行修正次數不是有效的數字，將使用預設值。\n")
 
-        elif selected_mode == "resume":
+            self.log_message(f"執行命令: {' '.join(command)}\n")
+
+        elif self.mode_selection.get() == "resume":
+            if not self.resume_output_dir_path.get():
+                messagebox.showwarning("警告", "請選擇現有輸出資料夾")
+                return
             resume_output_dir = self.resume_output_dir_path.get()
-            if not resume_output_dir:
+            if not os.path.isdir(resume_output_dir):
                 self.log_message("錯誤：請務必選擇現有輸出資料夾。\n")
                 return
             if not os.path.isdir(resume_output_dir):
@@ -1203,31 +610,79 @@ class App(tk.Tk):
             api_base = self.api_base_var.get().strip() if hasattr(self, 'api_base_var') else ""
             if api_base and self.agent_type_var.get() in ["openai-compatible", "ollama", "llamacpp"]:
                 command.extend(["--api-base", api_base])
+            
             command.extend(["--agent", self.agent_type_var.get()])
-
+            
+            self.log_message(f"執行命令: {' '.join(command)}\n")
         
-        if not command:
-            self.log_message("錯誤：無法建構執行指令。\n")
-            return
+        else:
+            # Embed Images Mode
+            if not self.guide_html_path.get():
+                messagebox.showwarning("警告", "請先選擇 guide.html 檔案")
+                return
+            
+            command = [sys.executable, "scripts/embed_images.py", "--html", self.guide_html_path.get()]
+            self.log_message(f"執行命令: {' '.join(command)}\n")
+
+        # Execute command
+        self.run_button.config(state="disabled")
+        self.progress_label.config(text="正在執行...請等待...")
         
-        self.console.config(state="normal"); self.console.delete('1.0', tk.END); self.console.config(state="disabled")
-        self.run_button.config(state="disabled", text="執行中...")
+        def run_process():
+            try:
+                process = subprocess.Popen(
+                    command,
+                    stdout=subprocess.PIPE,
+                    stderr=subprocess.STDOUT,
+                    text=True,
+                    encoding='utf-8',
+                    errors='replace',
+                    bufsize=1,
+                    universal_newlines=True
+                )
+                
+                for line in process.stdout:
+                    self.after(0, self.log_message, line)
+                
+                process.wait()
+                
+                if process.returncode == 0:
+                    self.after(0, lambda: self.progress_label.config(text="執行完成！"))
+                else:
+                    self.after(0, lambda: self.progress_label.config(text=f"執行結束 (Return code: {process.returncode})"))
+                    
+                self.after(0, lambda: self.run_button.config(state="normal"))
+            except Exception as e:
+                self.after(0, lambda: self.progress_label.config(text="執行出錯"))
+                self.after(0, lambda: self.log_message(f"[錯誤] {str(e)}\n"))
+                self.after(0, lambda: self.run_button.config(state="normal"))
+        
+        threading.Thread(target=run_process, daemon=True).start()
 
-        try:
-            thread = threading.Thread(target=self.run_in_thread, args=(command,)); thread.start()
-        except Exception as e:
-            self.log_message(f"啟動程序時發生錯誤: {e}\n"); self.run_button.config(state="normal", text="開始生成")
+    def log_message(self, message: str):
+        self.console.config(state="normal")
+        self.console.insert(tk.END, message)
+        self.console.see(tk.END)
+        self.console.config(state="disabled")
 
-def fetch_available_models():
-    """Returns default model list (no longer fetched from GitHub)."""
-    # Model selection is now handled dynamically by AgentFactory
-    # This is just a fallback for CLI agents that don't support model selection
-    return [
-        "gemini-2.5-flash",
-        "gemini-2.5-pro",
-    ]
+
+# Main entry point
+def main():
+    # Detect available models
+    available_models = []
+    try:
+        from agents.model_detector import default_detector
+        models = default_detector.get_all_models()
+        available_models = [m.name for m in models]
+    except Exception as e:
+        print(f"Warning: Could not detect models: {e}")
+    
+    if not available_models:
+        available_models = ["default"]
+    
+    app = App(available_models)
+    app.mainloop()
+
 
 if __name__ == "__main__":
-    available_models = fetch_available_models()
-    app = App(available_models=available_models)
-    app.mainloop()
+    main()
