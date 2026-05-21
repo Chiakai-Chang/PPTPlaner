@@ -149,8 +149,11 @@ class App(tk.Tk):
         agent_combobox.pack(side="left", padx=(0, 10))
         
         # Agent availability indicator
-        self.agent_status_label = tk.Label(agent_selection_frame, text="(檢查中...)", fg="#9e9e9e")
+        self.agent_status_label = tk.Label(agent_selection_frame, text="(偵測中...)", fg="#ff9800")
         self.agent_status_label.pack(side="left")
+        
+        # Start background detection after UI is shown
+        self.after(100, self._start_background_detection)
         
         # Update status when agent changes
         self.agent_type_var.trace_add("write", self._update_agent_status)
@@ -312,6 +315,43 @@ class App(tk.Tk):
         elif mode == "embed_images":
             self.embed_images_frame.pack(fill="both", expand=True, pady=10)
 
+    def _start_background_detection(self):
+        """Start background detection for openai-compatible agents.
+        
+        This runs after UI is shown, so it doesn't block startup.
+        """
+        if self.agent_type_var.get() in ["openai-compatible", "ollama", "llamacpp"]:
+            self.agent_status_label.config(text="(偵測中...)", fg="#ff9800")
+            threading.Thread(target=self._background_detect, daemon=True).start()
+        else:
+            # For CLI agents, check immediately
+            self._update_agent_status_sync()
+    
+    def _background_detect(self):
+        """Run detection in background thread."""
+        from agents.model_detector import default_detector
+        
+        try:
+            result = default_detector.detect_quick()
+            
+            if result:
+                # Success - update UI on main thread
+                def show_success():
+                    self.agent_status_label.config(
+                        text=f"({result.type} @ {result.url.split(':')[-1]})",
+                        fg="#4caf50"
+                    )
+                    self.agent_status_label.config(cursor="")
+                
+                self.after(0, show_success)
+                print(f"[UI] ✅ Quick check passed: {result.type} at {result.url}")
+            else:
+                # Failed - auto-trigger full detection
+                self._auto_detect_local_models()
+        except Exception as e:
+            print(f"[UI] ⚠️ Background detection failed: {e}")
+            self.after(0, lambda: self.agent_status_label.config(text="(偵測失敗)", fg="#f44336"))
+    
     def _update_agent_status(self, *args):
         """Update agent availability indicator based on selected agent."""
         from agents import AgentFactory
@@ -320,36 +360,28 @@ class App(tk.Tk):
         agent_name = self.agent_type_var.get()
         print(f"[UI] Checking availability for agent: {agent_name}")
         
-        # For OpenAI-compatible agents, do a QUICK check first
+        # For OpenAI-compatible agents, start background detection
         if agent_name in ["openai-compatible", "ollama", "llamacpp"]:
-            try:
-                # Quick check on most common endpoint
-                result = default_detector.detect_quick()
-                
-                if result:
-                    print(f"[UI] ✅ Quick check passed: {result.type} at {result.url}")
-                    self.agent_status_label.config(fg="#4caf50")  # Green
-                    self.agent_status_label.config(cursor="")
-                    # Don't trigger full detection yet - wait for user to actually use it
-                    return
-                else:
-                    print(f"[UI] Quick check failed - auto-starting full detection...")
-                    self.agent_status_label.config(fg="#ff9800")  # Orange (detecting)
-                    self.agent_status_label.config(cursor="hand2")
-                    # Auto-trigger full detection in background
-                    threading.Thread(target=self._auto_detect_local_models, daemon=True).start()
-            except Exception as e:
-                print(f"[UI] ⚠️ Local detection failed: {e}")
+            self.agent_status_label.config(text="(偵測中...)", fg="#ff9800")
+            threading.Thread(target=self._background_detect, daemon=True).start()
+            return
         
-        # For CLI agents or if local detection failed, use AgentFactory
+        # For CLI agents, check immediately
+        self._update_agent_status_sync()
+    
+    def _update_agent_status_sync(self):
+        """Synchronous agent status check for CLI agents."""
+        from agents import AgentFactory
+        
+        agent_name = self.agent_type_var.get()
         status = AgentFactory.get_agent_status(agent_name)
         
         if status.get("available"):
-            self.agent_status_label.config(fg="#4caf50")  # Green
+            self.agent_status_label.config(text="(可用)", fg="#4caf50")  # Green
             self.agent_status_label.config(cursor="")
             print(f"[UI] ✅ Agent {agent_name} is available")
         else:
-            self.agent_status_label.config(fg="#f44336")  # Red
+            self.agent_status_label.config(text="(不可用)", fg="#f44336")  # Red
             self.agent_status_label.config(cursor="hand2")
             print(f"[UI] ❌ Agent {agent_name} is not available")
             # Add tooltip with hint
@@ -454,7 +486,11 @@ class App(tk.Tk):
                 # Update UI on main thread
                 def update_ui():
                     self.api_base_var.set(base_url)
-                    self.agent_status_label.config(fg="#4caf50")  # Green
+                    port = first_endpoint.url.split(':')[-1] if ':' in first_endpoint.url else ''
+                    self.agent_status_label.config(
+                        text=f"({first_endpoint.type} @ {port})",
+                        fg="#4caf50"
+                    )  # Green
                     
                     if hasattr(self, 'detect_status_label'):
                         self.detect_status_label.config(
@@ -475,7 +511,7 @@ class App(tk.Tk):
                 self.after(0, update_ui)
             else:
                 def show_error():
-                    self.agent_status_label.config(fg="#f44336")  # Red
+                    self.agent_status_label.config(text="(未發現)", fg="#f44336")  # Red
                     if hasattr(self, 'detect_status_label'):
                         self.detect_status_label.config(text="(未發現)", fg="#f44336")
                 
