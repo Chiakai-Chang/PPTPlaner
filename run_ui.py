@@ -196,25 +196,25 @@ class App(tk.Tk):
         rework_frame.grid(row=4, column=0, columnspan=3, sticky="w", pady=5)
         tk.Label(rework_frame, text="最大修正次數 (0-10):").pack(side="left", padx=(0, 10))
         
+        tk.Label(rework_frame, text="分析:").pack(side="left", padx=(0, 5))
+        self.analysis_reworks_spinbox = tk.Spinbox(rework_frame, from_=0, to=10, width=5, justify="center")
+        self.analysis_reworks_spinbox.pack(side="left", padx=(0, 15))
+        self.analysis_reworks_spinbox.delete(0, "end"); self.analysis_reworks_spinbox.insert(0, "6")
+
         tk.Label(rework_frame, text="規劃:").pack(side="left", padx=(0, 5))
         self.plan_reworks_spinbox = tk.Spinbox(rework_frame, from_=0, to=10, width=5, justify="center")
         self.plan_reworks_spinbox.pack(side="left", padx=(0, 15))
-        self.plan_reworks_spinbox.delete(0, "end"); self.plan_reworks_spinbox.insert(0, "6")
-
+        self.plan_reworks_spinbox.delete(0, "end"); self.plan_reworks_spinbox.insert(0, "5")
+        
         tk.Label(rework_frame, text="簡報:").pack(side="left", padx=(0, 5))
         self.slide_reworks_spinbox = tk.Spinbox(rework_frame, from_=0, to=10, width=5, justify="center")
         self.slide_reworks_spinbox.pack(side="left", padx=(0, 15))
         self.slide_reworks_spinbox.delete(0, "end"); self.slide_reworks_spinbox.insert(0, "5")
-        
+
         tk.Label(rework_frame, text="備忘稿:").pack(side="left", padx=(0, 5))
         self.memo_reworks_spinbox = tk.Spinbox(rework_frame, from_=0, to=10, width=5, justify="center")
-        self.memo_reworks_spinbox.pack(side="left", padx=(0, 15))
-        self.memo_reworks_spinbox.delete(0, "end"); self.memo_reworks_spinbox.insert(0, "5")
-
-        tk.Label(rework_frame, text="執行:").pack(side="left", padx=(0, 5))
-        self.exec_reworks_spinbox = tk.Spinbox(rework_frame, from_=0, to=10, width=5, justify="center")
-        self.exec_reworks_spinbox.pack(side="left")
-        self.exec_reworks_spinbox.delete(0, "end"); self.exec_reworks_spinbox.insert(0, "3")
+        self.memo_reworks_spinbox.pack(side="left")
+        self.memo_reworks_spinbox.delete(0, "end"); self.memo_reworks_spinbox.insert(0, "3")
 
         # --- SVG Generation Checkbox ---
         options_frame = tk.Frame(self.new_generation_controls_frame)
@@ -232,15 +232,10 @@ class App(tk.Tk):
 
         self.new_generation_controls_frame.grid_columnconfigure(0, weight=1)
 
-        # Common elements
+        # Common elements (will be packed in toggle_mode_inputs)
         self.run_button = tk.Button(main_frame, text="開始生成", command=self.run_orchestration, font=("Arial", 12, "bold"), bg="#c0d8f0")
-        self.run_button.pack(pady=10, fill="x", padx=10)
-        
         self.progress_label = tk.Label(main_frame, text="執行進度:")
-        self.progress_label.pack(pady=5, padx=10)
-        
         self.console = scrolledtext.ScrolledText(main_frame, wrap=tk.WORD, state="disabled", bg="#f5f5f5")
-        self.console.pack(pady=5, padx=10, fill="both", expand=True)
 
         # Initial toggle to set correct visibility
         self.toggle_mode_inputs()
@@ -318,16 +313,29 @@ class App(tk.Tk):
 
     def toggle_mode_inputs(self):
         mode = self.mode_selection.get()
+        
+        # Remove all mode frames
         self.new_generation_controls_frame.pack_forget()
         self.resume_output_dir_frame.pack_forget()
         self.embed_images_frame.pack_forget()
         
+        # Remove common elements (they'll be re-added)
+        self.run_button.pack_forget()
+        self.progress_label.pack_forget()
+        self.console.pack_forget()
+        
+        # Pack mode-specific frame
         if mode == "new_generation":
             self.new_generation_controls_frame.pack(fill="both", expand=True, pady=10)
         elif mode == "resume":
             self.resume_output_dir_frame.pack(fill="x", pady=10)
         elif mode == "embed_images":
             self.embed_images_frame.pack(fill="both", expand=True, pady=10)
+        
+        # Pack common elements AFTER mode frame
+        self.run_button.pack(pady=10, fill="x", padx=10)
+        self.progress_label.pack(pady=5, padx=10)
+        self.console.pack(pady=5, padx=10, fill="both", expand=True)
 
     def _start_background_detection(self):
         """Start background detection for openai-compatible agents.
@@ -351,11 +359,18 @@ class App(tk.Tk):
             if result:
                 # Success - update UI on main thread
                 def show_success():
+                    port = result.url.split(':')[-1] if ':' in result.url else ''
                     self.agent_status_label.config(
-                        text=f"({result.type} @ {result.url.split(':')[-1]})",
+                        text=f"({result.type} @ {port})",
                         fg="#4caf50"
                     )
                     self.agent_status_label.config(cursor="")
+                    
+                    # Update API base URL
+                    base_url = result.url
+                    if "/v1" not in base_url:
+                        base_url += "/v1"
+                    self.api_base_var.set(base_url)
                 
                 self.after(0, show_success)
                 print(f"[UI] ✅ Quick check passed: {result.type} at {result.url}")
@@ -657,6 +672,11 @@ class App(tk.Tk):
             
             # Add rework counts if they are valid integers
             try:
+                if int(self.analysis_reworks_spinbox.get()) >= 0: command.extend(["--analysis-reworks", self.analysis_reworks_spinbox.get()])
+            except ValueError:
+                self.log_message("警告：分析修正次數不是有效的數字，將使用預設值。\n")
+            
+            try:
                 if int(self.plan_reworks_spinbox.get()) >= 0: command.extend(["--plan-reworks", self.plan_reworks_spinbox.get()])
             except ValueError:
                 self.log_message("警告：規劃修正次數不是有效的數字，將使用預設值。\n")
@@ -670,11 +690,6 @@ class App(tk.Tk):
                 if int(self.memo_reworks_spinbox.get()) >= 0: command.extend(["--memo-reworks", self.memo_reworks_spinbox.get()])
             except ValueError:
                 self.log_message("警告：備忘稿修正次數不是有效的數字，將使用預設值。\n")
-            
-            try:
-                if int(self.exec_reworks_spinbox.get()) >= 0: command.extend(["--exec-reworks", self.exec_reworks_spinbox.get()])
-            except ValueError:
-                self.log_message("警告：執行修正次數不是有效的數字，將使用預設值。\n")
 
             self.log_message(f"執行命令: {' '.join(command)}\n")
 
