@@ -333,10 +333,11 @@ class App(tk.Tk):
                     # Don't trigger full detection yet - wait for user to actually use it
                     return
                 else:
-                    print(f"[UI] Quick check failed - will run full detection when needed")
-                    self.agent_status_label.config(fg="#ff9800")  # Orange (uncertain)
+                    print(f"[UI] Quick check failed - auto-starting full detection...")
+                    self.agent_status_label.config(fg="#ff9800")  # Orange (detecting)
                     self.agent_status_label.config(cursor="hand2")
-                    return
+                    # Auto-trigger full detection in background
+                    threading.Thread(target=self._auto_detect_local_models, daemon=True).start()
             except Exception as e:
                 print(f"[UI] ⚠️ Local detection failed: {e}")
         
@@ -435,7 +436,7 @@ class App(tk.Tk):
         """Auto-detect local AI models in background."""
         from agents.model_detector import default_detector
         
-        print("[Auto-Detect] Starting model detection...")
+        print("[Auto-Detect] Starting full model detection...")
         
         try:
             endpoints = default_detector.detect_all()
@@ -450,18 +451,35 @@ class App(tk.Tk):
                 if "/v1" not in base_url:
                     base_url += "/v1"
                 
-                # Update API base URL
-                self.api_base_var.set(base_url)
-                print(f"[Auto-Detect] ✅ Found {first_endpoint.type} at {base_url}")
+                # Update UI on main thread
+                def update_ui():
+                    self.api_base_var.set(base_url)
+                    self.agent_status_label.config(fg="#4caf50")  # Green
+                    
+                    if hasattr(self, 'detect_status_label'):
+                        self.detect_status_label.config(
+                            text=f"({len(available)} 個端點)",
+                            fg="#4caf50"
+                        )
+                    
+                    print(f"[Auto-Detect] ✅ Found {first_endpoint.type} at {base_url}")
+                    
+                    # Update model dropdown with detected models
+                    models = [m.name for m in first_endpoint.models] if first_endpoint.models else []
+                    if models:
+                        self._update_model_comboboxes(models)
+                        print(f"[Auto-Detect] ✅ Detected models: {', '.join(models[:5])}")
+                    else:
+                        print("[Auto-Detect] ⚠️ No models detected, using defaults")
                 
-                # Update model dropdown with detected models
-                models = [m.name for m in first_endpoint.models] if first_endpoint.models else []
-                if models:
-                    self.after(0, lambda: self._update_model_comboboxes(models))
-                    print(f"[Auto-Detect] ✅ Detected models: {', '.join(models[:5])}")
-                else:
-                    print("[Auto-Detect] ⚠️ No models detected, using defaults")
+                self.after(0, update_ui)
             else:
+                def show_error():
+                    self.agent_status_label.config(fg="#f44336")  # Red
+                    if hasattr(self, 'detect_status_label'):
+                        self.detect_status_label.config(text="(未發現)", fg="#f44336")
+                
+                self.after(0, show_error)
                 print("[Auto-Detect] ⚠️ No available local models found")
         except Exception as e:
             import traceback
@@ -695,10 +713,26 @@ class App(tk.Tk):
 
 # Main entry point
 def main():
-    # No startup detection - let user choose agent first
-    # Detection only happens when user selects openai-compatible agent
-    app = App(["Loading models..."])
-    app.mainloop()
+    try:
+        # No startup detection - let user choose agent first
+        # Detection only happens when user selects openai-compatible agent
+        print("[Startup] Creating App...")
+        app = App(["Loading models..."])
+        print("[Startup] App created, starting mainloop...")
+        
+        # Ensure window is visible
+        app.update_idletasks()
+        app.lift()  # Bring to front
+        app.attributes('-topmost', True)
+        app.after(100, lambda: app.attributes('-topmost', False))
+        
+        app.mainloop()
+        print("[Startup] mainloop exited")
+    except Exception as e:
+        import traceback
+        print(f"[Startup ERROR] {e}")
+        traceback.print_exc()
+        input("Press Enter to exit...")
 
 
 if __name__ == "__main__":

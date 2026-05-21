@@ -259,24 +259,27 @@ class ModelDetector:
         return result
     
     def detect_quick(self) -> Optional[DetectedEndpoint]:
-        """Quick detection - tries only the most common endpoint first.
+        """Quick detection - tries the two most common endpoints first.
         
-        Returns immediately if the first endpoint responds.
+        Returns immediately if any endpoint responds.
         Useful for fast startup check.
         """
         if not self.endpoints:
             return None
         
-        # Try only the first (most common) endpoint
-        url = self.endpoints[0]
-        self._log(f"Quick check: {url}")
+        # Try only the first two most common endpoints (Ollama + llama.cpp)
+        # Don't try all 4 to keep it fast
+        quick_endpoints = self.endpoints[:2]  # localhost:11434, localhost:8080
         
-        result = self.detect_endpoint(url)
-        if result.available:
-            self._log(f"  ✅ Found {result.type} at {url}")
-            return result
+        for url in quick_endpoints:
+            self._log(f"Quick check: {url}")
+            result = self.detect_endpoint(url)
+            if result.available:
+                self._log(f"  ✅ Found {result.type} at {url}")
+                return result
+            self._log(f"  ❌ Not available")
         
-        self._log(f"  ❌ Not available")
+        self._log(f"  ❌ No server found in quick check")
         return None
     
     def detect_all(self) -> List[DetectedEndpoint]:
