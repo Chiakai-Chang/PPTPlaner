@@ -97,20 +97,42 @@ class AntigravityAdapter(AgentInterface):
             
             try:
                 logger.info(f"Calling {self.NAME} for {mode}... (Attempt {attempt + 1}/{max_retries})")
+                logger.debug(f"Command: {' '.join(cmd)}")
+                
                 result = subprocess.run(
                     cmd,
                     input=prompt,
                     capture_output=True,
                     text=True,
                     encoding="utf-8",
-                    check=True
+                    check=False  # Don't raise, handle manually
                 )
+                
+                # Log detailed output for debugging
+                logger.debug(f"Return code: {result.returncode}")
+                logger.debug(f"STDOUT length: {len(result.stdout)}")
+                logger.debug(f"STDERR length: {len(result.stderr)}")
+                
+                if result.returncode != 0:
+                    # Command failed
+                    error_msg = result.stderr or result.stdout or "Unknown error"
+                    logger.warning(f"Command failed with code {result.returncode}: {error_msg[:500]}")
+                    agent_logger.log_agent_response(
+                        timing, 
+                        False, 
+                        error_msg=f"Exit code {result.returncode}: {error_msg[:200]}"
+                    )
+                    attempt += 1
+                    continue
                 
                 output = result.stdout.strip()
                 if output:
                     agent_logger.log_agent_response(timing, True, len(output))
                     return output
                 
+                # Empty output - log and retry
+                logger.warning(f"Empty output from {self.NAME} (attempt {attempt + 1}/{max_retries})")
+                logger.debug(f"STDERR: {result.stderr[:200] if result.stderr else 'None'}")
                 attempt += 1
                 
             except subprocess.CalledProcessError as e:
@@ -146,6 +168,7 @@ class AntigravityAdapter(AgentInterface):
                     attempt += 1
             
             if attempt < max_retries:
+                logger.warning(f"Retrying in {retry_delay} seconds...")
                 time.sleep(retry_delay)
         
         raise AgentExecutionError(

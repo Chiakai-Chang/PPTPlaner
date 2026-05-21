@@ -303,13 +303,26 @@ def run_agent(agent: str, mode: str, vars_map: dict, retries: int = 3, delay: in
                 print_warning(f"⚠️ Auto-detection failed: {e}")
     
     # Get API base from config or detection
-    api_base = config_data.get("agent_config", {}).get("api_base") or detected_api_base
-    if not api_base:
-        api_base = "http://localhost:11434/v1"  # Default Ollama
-        print_warning(f"⚠️ Using default Ollama endpoint: {api_base}")
+    # CLI agents don't need api_base
+    api_base = None
+    if agent.lower().strip() not in cli_agents:
+        api_base = config_data.get("agent_config", {}).get("api_base") or detected_api_base
+        if not api_base:
+            api_base = "http://localhost:11434/v1"  # Default Ollama
+            print_warning(f"⚠️ Using default Ollama endpoint: {api_base}")
     
     # Determine effective model based on agent type
     effective_model = model_name
+    
+    # CLI agents: Don't run auto-detection for CLI agents - they use their own CLI
+    cli_agents = ["antigravity", "claude"]
+    
+    if agent.lower().strip() in cli_agents:
+        # CLI agents use their own command-line tools, not API endpoints
+        # No auto-detection needed
+        detected_api_base = None
+        detected_model = None
+        print_info(f"🔹 Using {agent} CLI mode (no API endpoint needed)")
     
     # CLI agents: Only use model_name if it's valid for this agent
     if agent.lower().strip() in ["antigravity", "claude"]:
@@ -602,8 +615,6 @@ def main():
 
     # Phase 1: Analysis
     print_header("Phase 1: Analysis & Planning")
-    report_start_phase("Analysis & Planning")
-    report_add_step("Starting document analysis")
     analysis_vars = {"source_file_path": str(source_path), "custom_instruction": args.custom_instruction or "", "manual_title": args.manual_title or "", "manual_author": args.manual_author or "", "manual_url": args.manual_url or ""}
     
     analysis_data, acceptable_analysis, analysis_feedback_history = {}, {}, []
@@ -656,6 +667,10 @@ def main():
     # Initialize review report for quality tracking
     init_review_report(output_dir, args.source)
     print_info(f"Review report will be saved to: {output_dir}/REVIEW_REPORT.md")
+    
+    # Start Phase 1 review tracking (now that review report is initialized)
+    report_start_phase("Analysis & Planning")
+    report_add_step("Starting document analysis")
 
     if glossary: (output_dir / "glossary.json").write_text(json.dumps(glossary, indent=2, ensure_ascii=False), encoding="utf-8")
     
