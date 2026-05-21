@@ -100,12 +100,15 @@ class AntigravityAdapter(AgentInterface):
         """Execute command using pywinpty for TTY support."""
         from winpty import PtyProcess
         
+        print(f"  🔄 [Antigravity] Executing command... (may take 1-10 minutes)", flush=True)
+        
         proc = PtyProcess.spawn(cmd_string)
         
         full_output = ""
         timeout = 600  # 10 minutes for local models
         elapsed = 0
         idle_time = 0
+        last_progress = 0
         
         while proc.isalive() and elapsed < timeout:
             try:
@@ -113,12 +116,12 @@ class AntigravityAdapter(AgentInterface):
                 if chunk:
                     full_output += chunk
                     idle_time = 0
-                else:
-                    idle_time += 0.1
-                    # If no output for too long, consider done
-                    if idle_time > 30:
-                        logger.debug("No output for 30s, assuming done")
-                        break
+                    # Show progress every 30 seconds
+                    if elapsed - last_progress > 30:
+                        minutes = int(elapsed // 60)
+                        seconds = int(elapsed % 60)
+                        print(f"  ⏳ [Antigravity] Processing... {minutes}m {seconds}s elapsed", flush=True)
+                        last_progress = elapsed
             except EOFError:
                 break
             
@@ -127,8 +130,10 @@ class AntigravityAdapter(AgentInterface):
         
         # Clean up process if still alive
         if proc.isalive():
+            print(f"  ⚠️ [Antigravity] Timeout after {int(elapsed)}s, killing process", flush=True)
             proc.kill()
         
+        print(f"  ✅ [Antigravity] Received {len(full_output)} chars", flush=True)
         return full_output
     
     def _execute_with_subprocess(self, cmd_string: str) -> str:

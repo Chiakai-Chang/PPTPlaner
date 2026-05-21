@@ -417,6 +417,7 @@ def run_agent(agent: str, mode: str, vars_map: dict, retries: int = 3, delay: in
         )
         
         print_info(f"Calling {agent_instance.NAME} for {mode}... (Attempt {attempt + 1}/{retries})")
+        print_info(f"  ℹ️  這可能需要 1-10 分鐘，請耐心等待...")
         rlog_data(f"Agent Inputs ({mode})", log_inputs)
 
         try:
