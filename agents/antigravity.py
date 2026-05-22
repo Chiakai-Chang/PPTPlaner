@@ -7,12 +7,17 @@ This is the successor to Gemini CLI.
 IMPORTANT: agy is a TTY-aware CLI. It requires a pseudo-terminal (PTY)
 to produce output. Standard subprocess.PIPE will NOT work.
 This adapter uses pywinpty on Windows to create a PTY.
+
+IMPORTANT: For large prompts, we write to a temp file and use stdin
+because Windows command line has a 8191 character limit.
 """
 import subprocess
 import os
 import time
 import re
 import logging
+import threading
+import tempfile
 from typing import Optional, List, Dict, Any
 from .base import AgentInterface
 from .exceptions import AgentExecutionError, AgentAuthenticationError
@@ -21,15 +26,27 @@ from .retry import RetryStrategy
 logger = logging.getLogger(__name__)
 
 
+# Windows command line limit
+WINDOWS_CMD_LIMIT = 8000  # Be conservative, actual limit is 8191
+
+
 class AntigravityAdapter(AgentInterface):
     """Antigravity CLI (agy) adapter.
     
     Uses pywinpty to create a pseudo-terminal for agy CLI,
     which requires TTY to output results.
+    
+    For large prompts (>8KB), writes prompt to temp file
+    to avoid Windows command line length limit.
     """
     
     NAME = "Antigravity CLI"
     COMMAND = "agy"
+    
+    # Cooldown settings
+    COOLDOWN_DURATION = 5  # Seconds between calls
+    COOLDOWN_AFTER_LARGE = 15  # Extra cooldown after large outputs
+    LARGE_OUTPUT_THRESHOLD = 5000  # Characters that trigger extra cooldown
     
     def __init__(self, config: Dict[str, Any]):
         super().__init__(config)
@@ -39,6 +56,11 @@ class AntigravityAdapter(AgentInterface):
         self.command_override = config.get("agent_config", {}).get("command_override")
         self._use_pywinpty = True  # Enable by default
         
+        # Thread-safe cooldown tracking
+        self._last_call_time = 0
+        self._last_output_size = 0
+        self._lock = threading.Lock()
+        
         # Check if pywinpty is available
         try:
             import winpty
@@ -47,16 +69,59 @@ class AntigravityAdapter(AgentInterface):
             logger.warning("pywinpty not available, falling back to subprocess")
             self._use_pywinpty = False
     
-    def _build_command_string(self, prompt: str, mode: str, options: Optional[Dict[str, Any]] = None) -> str:
-        """Build command string for shell execution.
+    def _cooldown(self):
+        """Wait for cooldown period between calls."""
+        with self._lock:
+            now = time.time()
+            elapsed = now - self._last_call_time
+            
+            # Calculate required cooldown
+            required_cooldown = self.COOLDOWN_DURATION
+            if self._last_output_size > self.LARGE_OUTPUT_THRESHOLD:
+                required_cooldown += self.COOLDOWN_AFTER_LARGE
+                logger.debug(f"Large output detected ({self._last_output_size} chars), adding extra cooldown")
+            
+            sleep_time = max(0, required_cooldown - elapsed)
+            
+            if sleep_time > 0:
+                logger.debug(f"Cooldown: waiting {sleep_time:.1f}s")
+                time.sleep(sleep_time)
+            
+            self._last_call_time = time.time()
+    
+    def _build_command_with_file(self, prompt: str, options: Optional[Dict[str, Any]] = None) -> tuple[str, str]:
+        """Build command using temp file for large prompts.
         
-        Returns a shell command string for pywinpty.
+        Returns (cmd_string, temp_file_path)
         """
         cmd_exe = self.command_override or self.COMMAND
         
-        # Build command parts - escape quotes in prompt
+        # Create temp file with prompt
+        temp_dir = os.path.join(os.getcwd(), "temp")
+        os.makedirs(temp_dir, exist_ok=True)
+        temp_file = os.path.join(temp_dir, f"agy_prompt_{int(time.time()*1000)}.txt")
+        
+        with open(temp_file, "w", encoding="utf-8") as f:
+            f.write(prompt)
+        
+        logger.debug(f"Prompt written to temp file: {temp_file} ({os.path.getsize(temp_file)} bytes)")
+        
+        # Build command to read from file
+        # Use type command to read file content as prompt
+        cmd_string = f'{cmd_exe} -p "@type {temp_file}" --dangerously-skip-permissions --print-timeout 600s'
+        
+        return cmd_string, temp_file
+    
+    def _build_command_inline(self, prompt: str, options: Optional[Dict[str, Any]] = None) -> tuple[str, str]:
+        """Build command with inline prompt for small prompts.
+        
+        Returns (cmd_string, temp_file_path)
+        """
+        cmd_exe = self.command_override or self.COMMAND
+        
+        # Escape special characters in prompt for shell
         escaped_prompt = prompt.replace('"', '\\"')
-        parts = [cmd_exe, "-p", f'"{escaped_prompt}"']
+        parts = [f'"{cmd_exe}"', "-p", f'"{escaped_prompt}"']
         
         # Auto-approve tool permissions
         parts.append("--dangerously-skip-permissions")
@@ -69,12 +134,27 @@ class AntigravityAdapter(AgentInterface):
         if workspace:
             parts.extend(["--add-dir", workspace])
         
-        return " ".join(parts)
+        cmd_string = " ".join(parts)
+        return cmd_string, None
+    
+    def _build_command(self, prompt: str, options: Optional[Dict[str, Any]] = None) -> tuple[str, str]:
+        """Build command string for shell execution.
+        
+        Uses temp file for large prompts to avoid Windows command line limit.
+        
+        Returns (cmd_string, temp_file_path)
+        """
+        # For large prompts, use temp file
+        if len(prompt) > WINDOWS_CMD_LIMIT:
+            print(f"  ℹ️  [Antigravity] Large prompt ({len(prompt)} chars), using temp file", flush=True)
+            return self._build_command_with_file(prompt, options)
+        
+        return self._build_command_inline(prompt, options)
     
     def _strip_ansi_codes(self, text: str) -> str:
         """Remove ANSI escape codes from terminal output."""
         # ANSI escape sequences
-        ansi_escape = re.compile(r'\x1b\[[0-9;]*[a-zA-Z]|\x1b\([^)]*\)|\x1b\[[0-9;]*[mGKH]|\\r\\n')
+        ansi_escape = re.compile(r'\x1b\[[0-9;]*[a-zA-Z]|\x1b\([^)]*\)|\x1b\[[0-9;]*[mGKH]')
         text = ansi_escape.sub('', text)
         
         # Remove other control characters
@@ -167,6 +247,9 @@ class AntigravityAdapter(AgentInterface):
         """Execute agent with given prompt and mode."""
         from .logging_config import agent_logger
         
+        # Apply cooldown before starting
+        self._cooldown()
+        
         attempt = 0
         while attempt < max_retries:
             timing = agent_logger.log_agent_call(
@@ -176,9 +259,12 @@ class AntigravityAdapter(AgentInterface):
             try:
                 logger.info(f"Calling {self.NAME} for {mode}... (Attempt {attempt + 1}/{max_retries})")
                 
-                # Build command string
-                cmd_string = self._build_command_string(prompt, mode, options)
-                logger.debug(f"Command: {cmd_string}")
+                # Build command string (uses temp file for large prompts)
+                cmd_string, temp_file = self._build_command(prompt, options)
+                logger.debug(f"Command: {cmd_string[:100]}...")
+                
+                if temp_file:
+                    logger.debug(f"Prompt file: {temp_file} ({os.path.getsize(temp_file)} bytes)")
                 
                 # Execute using pywinpty (TTY required)
                 if self._use_pywinpty:
@@ -186,9 +272,20 @@ class AntigravityAdapter(AgentInterface):
                 else:
                     raw_output = self._execute_with_subprocess(cmd_string)
                 
+                # Clean up temp file
+                if temp_file and os.path.exists(temp_file):
+                    try:
+                        os.remove(temp_file)
+                    except:
+                        pass
+                
                 # Clean up output
                 output = self._strip_ansi_codes(raw_output)
                 output = self._extract_json(output)
+                
+                # Track output size for cooldown
+                with self._lock:
+                    self._last_output_size = len(output)
                 
                 # Log result
                 logger.debug(f"Output length: {len(output)}")
