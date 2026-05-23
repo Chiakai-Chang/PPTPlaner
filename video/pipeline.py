@@ -116,12 +116,19 @@ def run_video_pipeline(
     clips_dir = base_output / run_id / "clips"
     clips_dir.mkdir(parents=True, exist_ok=True)
 
+    # Create checkpoint for this run
+    run_id = uuid.uuid4().hex[:8]
+    cp = Checkpoint(clips_dir.parent, run_id)
+
     # Generate intro
     intro_cfg = video_cfg.get("intro", {})
     intro_path = clips_dir / "intro.mp4"
     if intro_cfg.get("enabled", True):
         from video.steps.step4_bookend import generate_bookend_clip
-        intro_template = project_root / "video" / "templates" / "yt_intro_default.html"
+        # Use video module location, not project_root
+        import video as video_pkg
+        module_dir = Path(video_pkg.__file__).parent
+        intro_template = module_dir / "templates" / "yt_intro_default.html"
         try:
             generate_bookend_clip(
                 template_path=intro_template,
@@ -137,8 +144,10 @@ def run_video_pipeline(
                 width=intro_cfg.get("width", VIDEO_DEFAULT_WIDTH),
                 height=intro_cfg.get("height", VIDEO_DEFAULT_HEIGHT),
             )
+            cp.mark_bookend("intro", "ok")
         except Exception:
             intro_path = None
+            cp.mark_bookend("intro", "failed")
 
     # Process each slide
     from video.providers.base import ImageProviderError, TtsProviderError
@@ -149,36 +158,41 @@ def run_video_pipeline(
     for idx, ctx in enumerate(slide_contexts):
         print_slide_start(idx + 1, total, ctx.slide_id)
 
-        cp = Checkpoint(ctx.clip_path.parent / f"{ctx.slide_id}.json")
-        if cp.is_done():
-            print_skipped(ctx.slide_id, "already completed")
+        # Check if all steps for this slide are done
+        slide_done = all(
+            cp.is_done(ctx.slide_id, step)
+            for step in ["tts", "image", "clip"]
+        )
+        if slide_done:
+            print_skipped(ctx.slide_id)
             slide_clips.append(ctx.clip_path)
             continue
 
-        # Import step functions
-        from video.steps.step3_clip import compose_clip, ClipCompositionError
-
         try:
             run_slide_steps(ctx, config, clips_dir)
-            cp.mark_done()
+            cp.mark(ctx.slide_id, "tts", "ok")
+            cp.mark(ctx.slide_id, "image", "ok")
+            cp.mark(ctx.slide_id, "clip", "ok")
             slide_clips.append(ctx.clip_path)
         except TtsProviderError as e:
-            cp.mark_failed(str(e))
-            print_skipped(ctx.slide_id, f"TTS error: {e}")
+            cp.mark(ctx.slide_id, "tts", "failed", str(e))
+            print(f"  ⚠ {ctx.slide_id} — TTS error: {e}", flush=True)
         except ImageProviderError as e:
             # Use fallback (text overlay)
-            print_skipped(ctx.slide_id, f"Image error, using fallback: {e}")
-            cp.mark_failed(str(e))
+            print(f"  ⚠ {ctx.slide_id} — Image error, using fallback: {e}", flush=True)
+            cp.mark(ctx.slide_id, "image", "failed", str(e))
         except Exception as e:
-            cp.mark_failed(str(e))
-            print_skipped(ctx.slide_id, f"error: {e}")
+            cp.mark(ctx.slide_id, "clip", "failed", str(e))
+            print(f"  ⚠ {ctx.slide_id} — error: {e}", flush=True)
 
     # Generate outro
     outro_cfg = video_cfg.get("outro", {})
     outro_path = clips_dir / "outro.mp4"
     if outro_cfg.get("enabled", True):
         from video.steps.step4_bookend import generate_bookend_clip
-        outro_template = project_root / "video" / "templates" / "yt_outro_default.html"
+        import video as video_pkg
+        module_dir = Path(video_pkg.__file__).parent
+        outro_template = module_dir / "templates" / "yt_outro_default.html"
         try:
             generate_bookend_clip(
                 template_path=outro_template,
@@ -224,7 +238,7 @@ def run_video_pipeline(
         print(f"[VIDEO] Concat failed: {e}")
         return None
 
-    print_summary(total, len(slide_clips))
+    print_summary(len(slide_clips), 0, 0)
     return final_path
 
 
