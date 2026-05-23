@@ -37,3 +37,6 @@ output/
 # Runtime
 .runtime_config.json
 .pause_lock
+
+# Research (external repos cloned for evaluation only — root-anchored)
+/research/
