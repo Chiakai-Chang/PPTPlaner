@@ -125,20 +125,10 @@ def run_video_pipeline(
     intro_path = clips_dir / "intro.mp4"
     if intro_cfg.get("enabled", True):
         from video.steps.step4_bookend import generate_bookend_clip
-        # Use video module location, not project_root
-        import video as video_pkg
-        module_dir = Path(video_pkg.__file__).parent
-        intro_template = module_dir / "templates" / "yt_intro_default.html"
         try:
             generate_bookend_clip(
-                template_path=intro_template,
-                template_vars={
-                    "channel_name": intro_cfg.get("channel_name", ""),
-                    "tagline": intro_cfg.get("tagline", ""),
-                    "logo_path": intro_cfg.get("channel_logo", ""),
-                    "video_title": intro_cfg.get("video_title", ""),
-                    "duration_sec": intro_cfg.get("duration_sec", 8),
-                },
+                text=intro_cfg.get("text", intro_cfg.get("channel_name", "")),
+                title=intro_cfg.get("channel_name", intro_cfg.get("video_title", "")),
                 output_mp4=intro_path,
                 duration_sec=intro_cfg.get("duration_sec", 8),
                 width=intro_cfg.get("width", VIDEO_DEFAULT_WIDTH),
@@ -190,19 +180,10 @@ def run_video_pipeline(
     outro_path = clips_dir / "outro.mp4"
     if outro_cfg.get("enabled", True):
         from video.steps.step4_bookend import generate_bookend_clip
-        import video as video_pkg
-        module_dir = Path(video_pkg.__file__).parent
-        outro_template = module_dir / "templates" / "yt_outro_default.html"
         try:
             generate_bookend_clip(
-                template_path=outro_template,
-                template_vars={
-                    "channel_name": outro_cfg.get("channel_name", ""),
-                    "cta_text": outro_cfg.get("cta_text", ""),
-                    "subscribe_hint": outro_cfg.get("subscribe_hint", True),
-                    "next_video_text": outro_cfg.get("next_video_text", ""),
-                    "duration_sec": outro_cfg.get("duration_sec", 12),
-                },
+                text=outro_cfg.get("text", outro_cfg.get("cta_text", "")),
+                title=outro_cfg.get("channel_name", outro_cfg.get("video_title", "")),
                 output_mp4=outro_path,
                 duration_sec=outro_cfg.get("duration_sec", 12),
                 width=outro_cfg.get("width", VIDEO_DEFAULT_WIDTH),
