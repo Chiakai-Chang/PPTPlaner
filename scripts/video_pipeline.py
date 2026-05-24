@@ -84,6 +84,17 @@ def main():
 
     args = parser.parse_args()
 
+    # Debug output
+    print(f"DEBUG: argv = {sys.argv}")
+    print(f"DEBUG: ALL ARGS = {vars(args)}")
+    print(f"DEBUG: args.output_dir type = {type(args.output_dir)}")
+    print(f"DEBUG: args.output_dir value = {args.output_dir}")
+
+    # Ensure output_dir is properly set (already Path from argparse, but ensure)
+    if args.output_dir:
+        args.output_dir = Path(str(args.output_dir))
+        print(f"DEBUG: output_dir converted to {args.output_dir}")
+
     # Load config
     config_path = args.config or (args.project_root / "config.yaml")
     if not config_path.exists():
@@ -101,11 +112,26 @@ def main():
         sys.exit(1)
 
     # Validate required directories
-    slides_dir = args.slides_dir or (args.project_root / "output" / "slides")
-    notes_dir = args.notes_dir or (args.project_root / "output" / "notes")
+    # If output-dir is specified, look for slides/ and notes/ inside it
+    if args.output_dir:
+        slides_dir = args.slides_dir or (args.output_dir / "slides")
+        notes_dir = args.notes_dir or (args.output_dir / "notes")
+    else:
+        # Default: look in output/slides and output/notes
+        slides_dir = args.slides_dir or (args.project_root / "output" / "slides")
+        notes_dir = args.notes_dir or (args.project_root / "output" / "notes")
+    
+    # Debug: print what we're looking for
+    print(f"DEBUG: output_dir = {args.output_dir}")
+    print(f"DEBUG: slides_dir = {slides_dir}")
+    print(f"DEBUG: notes_dir = {notes_dir}")
 
     if not slides_dir.exists():
         print(f"Error: Slides directory not found: {slides_dir}")
+        print(f"  Looking for: {slides_dir}")
+        print(f"  Output dir: {args.output_dir}")
+        print(f"  Project root: {args.project_root}")
+        print(f"  Slides dir arg: {args.slides_dir}")
         print("Please run orchestrate.py first to generate slides.")
         sys.exit(1)
 

@@ -153,14 +153,17 @@ class App(tk.Tk):
         # TTS Provider selection
         tk.Label(vg_options_frame, text="語音類型: ").grid(row=0, column=0, sticky="w", pady=2)
         self.video_tts_provider = tk.StringVar(value="edge-tts")
-        tts_combobox = ttk.Combobox(vg_options_frame, textvariable=self.video_tts_provider, values=["edge-tts", "fish-speech"], state="readonly", width=20)
+        tts_combobox = ttk.Combobox(vg_options_frame, textvariable=self.video_tts_provider, values=["edge-tts"], state="readonly", width=20)
         tts_combobox.grid(row=0, column=1, sticky="w", pady=2, padx=5)
         
-        # Image Provider selection
+        # Image Provider selection - only "none" for now
         tk.Label(vg_options_frame, text="圖像類型: ").grid(row=1, column=0, sticky="w", pady=2)
         self.video_image_provider = tk.StringVar(value="none")
-        image_combobox = ttk.Combobox(vg_options_frame, textvariable=self.video_image_provider, values=["none", "comfyui", "runninghub"], state="readonly", width=20)
-        image_combobox.grid(row=1, column=1, sticky="w", pady=2, padx=5)
+        image_label = tk.Label(vg_options_frame, text="文字覆疊 (預設)", fg="#666")
+        image_label.grid(row=1, column=1, sticky="w", pady=2, padx=5)
+        
+        # Add info text
+        tk.Label(vg_options_frame, text="註: 圖像生成需要額外安裝 ComfyUI 或 RunningHub", fg="#999", font=("Arial", 8)).grid(row=2, column=0, columnspan=2, sticky="w", pady=5)
         
         # Bottom section: Status
         vg_status_frame = tk.Frame(self.video_generation_frame)
@@ -789,6 +792,8 @@ class App(tk.Tk):
             
             command = [sys.executable, "scripts/video_pipeline.py", "--output-dir", output_dir, "--enable-video"]
             self.log_message(f"開始生成影片...\n")
+            self.log_message(f"DEBUG output_dir type: {type(output_dir)} value: {repr(output_dir)}\n")
+            self.log_message(f"DEBUG command: {command}\n")
             self.log_message(f"執行命令: {' '.join(command)}\n")
         
         else:

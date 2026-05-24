@@ -1,0 +1,32 @@
+{
+  "gpu": {
+    "available": true,
+    "name": "NVIDIA RTX A4500",
+    "total_vram_mb": 20470,
+    "used_vram_mb": 19313,
+    "free_vram_mb": 935,
+    "utilization": 5
+  },
+  "docker": {
+    "available": true,
+    "version": "9d7ad9f",
+    "daemon_running": true
+  },
+  "ffmpeg": {
+    "available": true,
+    "version": "developers"
+  },
+  "python": {
+    "phase1": false,
+    "phase2": false,
+    "details": {
+      "edge-tts": true,
+      "Pillow": false,
+      "Jinja2": false,
+      "pytest": true,
+      "httpx": true,
+      "torch": true,
+      "transformers": false
+    }
+  }
+}
