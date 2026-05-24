@@ -320,17 +320,38 @@ class AntigravityAdapter(AgentInterface):
     
     def is_available(self) -> bool:
         """Check if Antigravity CLI is available."""
+        import sys
         cmd = self.command_override or self.COMMAND
         
+        print(f"[Antigravity] Checking availability for command: '{cmd}'", file=sys.stderr, flush=True)
+        print(f"[Antigravity] os.name: {os.name}", file=sys.stderr, flush=True)
+        
+        # Check if command exists directly
         if os.path.exists(cmd):
+            print(f"[Antigravity] Command found via os.path.exists", file=sys.stderr, flush=True)
             return True
         
-        result = subprocess.run(
-            ["where", cmd] if os.name == "nt" else ["which", cmd],
-            capture_output=True
-        )
+        # Try 'where' command on Windows
+        if os.name == 'nt':
+            print(f"[Antigravity] Running 'where {cmd}'...", file=sys.stderr, flush=True)
+            try:
+                result = subprocess.run(
+                    ["where", cmd],
+                    capture_output=True,
+                    timeout=5
+                )
+                print(f"[Antigravity] where returncode: {result.returncode}", file=sys.stderr, flush=True)
+                print(f"[Antigravity] where stdout: {result.stdout}", file=sys.stderr, flush=True)
+                print(f"[Antigravity] where stderr: {result.stderr}", file=sys.stderr, flush=True)
+                
+                if result.returncode == 0:
+                    print(f"[Antigravity] Command found via 'where'", file=sys.stderr, flush=True)
+                    return True
+            except Exception as e:
+                print(f"[Antigravity] Exception in 'where' call: {e}", file=sys.stderr, flush=True)
         
-        return result.returncode == 0
+        print(f"[Antigravity] Command NOT found", file=sys.stderr, flush=True)
+        return False
     
     def get_installation_hint(self) -> str:
         """Return installation instructions."""
