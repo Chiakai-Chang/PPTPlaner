@@ -93,6 +93,7 @@ class App(tk.Tk):
         tk.Radiobutton(mode_selection_frame, text="全新生成", variable=self.mode_selection, value="new_generation", command=self.toggle_mode_inputs).pack(side="left", padx=5)
         tk.Radiobutton(mode_selection_frame, text="接續生成 SVG", variable=self.mode_selection, value="resume", command=self.toggle_mode_inputs).pack(side="left", padx=5)
         tk.Radiobutton(mode_selection_frame, text="製作圖文簡報 (HTML)", variable=self.mode_selection, value="embed_images", command=self.toggle_mode_inputs).pack(side="left", padx=5)
+        tk.Radiobutton(mode_selection_frame, text="影片生成", variable=self.mode_selection, value="video_generation", command=self.toggle_mode_inputs).pack(side="left", padx=5)
 
         # --- Resume Specific Inputs ---
         self.resume_output_dir_frame = tk.Frame(main_frame) 
@@ -132,6 +133,46 @@ class App(tk.Tk):
         self.image_canvas.create_window((0,0), window=self.slide_rows_frame, anchor="nw")
         self.slide_rows_frame.bind("<Configure>", lambda e: self.image_canvas.configure(scrollregion=self.image_canvas.bbox("all")))
         self.image_canvas.bind("<MouseWheel>", self._on_mousewheel)
+
+        # --- Video Generation Specific Inputs ---
+        self.video_generation_frame = tk.Frame(main_frame)
+        
+        # Top section: Output directory selection
+        vg_top_frame = tk.Frame(self.video_generation_frame)
+        vg_top_frame.pack(fill="x", pady=5)
+        tk.Label(vg_top_frame, text="選擇簡報輸出資料夾 (必須包含 slides/ 和 notes/): ").grid(row=0, column=0, sticky="w")
+        self.video_output_dir_path = tk.StringVar()
+        tk.Entry(vg_top_frame, textvariable=self.video_output_dir_path, width=70).grid(row=0, column=1, padx=5, sticky="ew")
+        tk.Button(vg_top_frame, text="瀏覽...", command=self.browse_video_output_dir).grid(row=0, column=2, padx=2)
+        vg_top_frame.grid_columnconfigure(1, weight=1)
+        
+        # Middle section: Options
+        vg_options_frame = tk.Frame(self.video_generation_frame)
+        vg_options_frame.pack(fill="x", pady=5)
+        
+        # TTS Provider selection
+        tk.Label(vg_options_frame, text="語音類型: ").grid(row=0, column=0, sticky="w", pady=2)
+        self.video_tts_provider = tk.StringVar(value="edge-tts")
+        tts_combobox = ttk.Combobox(vg_options_frame, textvariable=self.video_tts_provider, values=["edge-tts", "fish-speech"], state="readonly", width=20)
+        tts_combobox.grid(row=0, column=1, sticky="w", pady=2, padx=5)
+        
+        # Image Provider selection
+        tk.Label(vg_options_frame, text="圖像類型: ").grid(row=1, column=0, sticky="w", pady=2)
+        self.video_image_provider = tk.StringVar(value="none")
+        image_combobox = ttk.Combobox(vg_options_frame, textvariable=self.video_image_provider, values=["none", "comfyui", "runninghub"], state="readonly", width=20)
+        image_combobox.grid(row=1, column=1, sticky="w", pady=2, padx=5)
+        
+        # Enable Intro/Outro
+        self.video_enable_intro = tk.BooleanVar(value=True)
+        tk.Checkbutton(vg_options_frame, text="啟用開場", variable=self.video_enable_intro).grid(row=2, column=0, sticky="w", pady=2)
+        self.video_enable_outro = tk.BooleanVar(value=True)
+        tk.Checkbutton(vg_options_frame, text="啟用結尾", variable=self.video_enable_outro).grid(row=2, column=1, sticky="w", pady=2)
+        
+        # Bottom section: Status
+        vg_status_frame = tk.Frame(self.video_generation_frame)
+        vg_status_frame.pack(fill="x", pady=10)
+        self.video_status_label = tk.Label(vg_status_frame, text="", fg="#9e9e9e", font=("Arial", 8))
+        self.video_status_label.pack(side="left")
 
         # --- New Generation Specific Inputs ---
         self.new_generation_controls_frame = tk.Frame(main_frame)
@@ -255,6 +296,10 @@ class App(tk.Tk):
         dirpath = filedialog.askdirectory()
         if dirpath: self.resume_output_dir_path.set(os.path.abspath(dirpath))
 
+    def browse_video_output_dir(self):
+        dirpath = filedialog.askdirectory(title="選擇簡報輸出資料夾 (必須包含 slides/ 和 notes/)")
+        if dirpath: self.video_output_dir_path.set(os.path.abspath(dirpath))
+
     def browse_guide_html(self):
         filepath = filedialog.askopenfilename(filetypes=[("HTML", "*.html"), ("All Files", "*.*")])
         if filepath: self.guide_html_path.set(os.path.abspath(filepath))
@@ -318,6 +363,7 @@ class App(tk.Tk):
         self.new_generation_controls_frame.pack_forget()
         self.resume_output_dir_frame.pack_forget()
         self.embed_images_frame.pack_forget()
+        self.video_generation_frame.pack_forget()
         
         # Remove common elements (they'll be re-added)
         self.run_button.pack_forget()
@@ -331,6 +377,8 @@ class App(tk.Tk):
             self.resume_output_dir_frame.pack(fill="x", pady=10)
         elif mode == "embed_images":
             self.embed_images_frame.pack(fill="both", expand=True, pady=10)
+        elif mode == "video_generation":
+            self.video_generation_frame.pack(fill="both", expand=True, pady=10)
         
         # Pack common elements AFTER mode frame
         self.run_button.pack(pady=10, fill="x", padx=10)
@@ -723,6 +771,30 @@ class App(tk.Tk):
             
             command.extend(["--agent", self.agent_type_var.get()])
             
+            self.log_message(f"執行命令: {' '.join(command)}\n")
+        
+        elif self.mode_selection.get() == "video_generation":
+            # Video Generation Mode
+            if not self.video_output_dir_path.get():
+                messagebox.showwarning("警告", "請選擇簡報輸出資料夾")
+                return
+            
+            output_dir = self.video_output_dir_path.get()
+            if not os.path.isdir(output_dir):
+                messagebox.showerror("錯誤", f"資料夾不存在: {output_dir}")
+                return
+            
+            # Check for slides/ and notes/ directories
+            if not os.path.isdir(os.path.join(output_dir, "slides")):
+                messagebox.showerror("錯誤", "找不到 slides/ 資料夾\n\n請先使用「全新生成」模式產生簡報")
+                return
+            
+            if not os.path.isdir(os.path.join(output_dir, "notes")):
+                messagebox.showerror("錯誤", "找不到 notes/ 資料夾\n\n請先使用「全新生成」模式產生簡報")
+                return
+            
+            command = [sys.executable, "scripts/video_pipeline.py", "--output-dir", output_dir]
+            self.log_message(f"開始生成影片...\n")
             self.log_message(f"執行命令: {' '.join(command)}\n")
         
         else:
