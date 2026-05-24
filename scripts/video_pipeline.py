@@ -67,6 +67,11 @@ def main():
         help="Show what would be done without executing"
     )
     parser.add_argument(
+        "--enable-video",
+        action="store_true",
+        help="Force enable video generation (bypass config.yaml check)"
+    )
+    parser.add_argument(
         "--slides-dir",
         type=Path, default=None,
         help="Override slides directory path"
@@ -88,10 +93,11 @@ def main():
 
     config = yaml.safe_load(config_path.read_text(encoding="utf-8"))
 
-    # Check if video is enabled
-    if not config.get("video", {}).get("enabled", False):
+    # Check if video is enabled (unless --enable-video flag is used)
+    if not args.enable_video and not config.get("video", {}).get("enabled", False):
         print("Video generation is disabled.")
         print("Enable it by setting video.enabled: true in config.yaml")
+        print("Or use --enable-video flag to bypass this check.")
         sys.exit(1)
 
     # Validate required directories

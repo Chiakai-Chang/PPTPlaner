@@ -162,12 +162,6 @@ class App(tk.Tk):
         image_combobox = ttk.Combobox(vg_options_frame, textvariable=self.video_image_provider, values=["none", "comfyui", "runninghub"], state="readonly", width=20)
         image_combobox.grid(row=1, column=1, sticky="w", pady=2, padx=5)
         
-        # Enable Intro/Outro
-        self.video_enable_intro = tk.BooleanVar(value=True)
-        tk.Checkbutton(vg_options_frame, text="啟用開場", variable=self.video_enable_intro).grid(row=2, column=0, sticky="w", pady=2)
-        self.video_enable_outro = tk.BooleanVar(value=True)
-        tk.Checkbutton(vg_options_frame, text="啟用結尾", variable=self.video_enable_outro).grid(row=2, column=1, sticky="w", pady=2)
-        
         # Bottom section: Status
         vg_status_frame = tk.Frame(self.video_generation_frame)
         vg_status_frame.pack(fill="x", pady=10)
@@ -793,7 +787,7 @@ class App(tk.Tk):
                 messagebox.showerror("錯誤", "找不到 notes/ 資料夾\n\n請先使用「全新生成」模式產生簡報")
                 return
             
-            command = [sys.executable, "scripts/video_pipeline.py", "--output-dir", output_dir]
+            command = [sys.executable, "scripts/video_pipeline.py", "--output-dir", output_dir, "--enable-video"]
             self.log_message(f"開始生成影片...\n")
             self.log_message(f"執行命令: {' '.join(command)}\n")
         
