@@ -12,28 +12,34 @@
 pip install edge-tts Pillow httpx
 ```
 
-### 步驟 2：配置
+### 步驟 2：啟動圖形介面
 
 ```bash
-# 複製範本配置
-copy config.yaml.example config.yaml
-
-# 編輯 config.yaml 修改必要設定
+# 啟動 UI
+python run_ui.py
 ```
 
 ### 步驟 3：生成簡報
 
-```bash
-python scripts/orchestrate.py --source 你的文件.md
-```
+1. 選擇「全新生成」模式
+2. 選擇要分析的文件
+3. 點擊「開始生成」
 
 ### 步驟 4：生成影片（可選）
 
-```bash
-# 檢查環境
-python scripts/check_video_env.py
+1. 選擇「影片生成」模式
+2. 選擇簡報輸出資料夾
+3. 點擊「開始生成」
 
-# 生成影片
+---
+
+## 命令列方式（進階用戶）
+
+```bash
+# 1. 生成簡報
+python scripts/orchestrate.py --source 你的文件.md
+
+# 2. 生成影片
 python scripts/video_pipeline.py
 ```
 
