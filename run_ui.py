@@ -849,13 +849,67 @@ class App(tk.Tk):
 
 
 # Main entry point
+def check_dependencies():
+    """Check required dependencies before starting UI."""
+    missing = []
+    
+    required_modules = [
+        ("requests", "API communication"),
+        ("yaml", "Configuration (PyYAML)"),
+        ("edge_tts", "TTS generation"),
+        ("PIL", "Image processing (Pillow)"),
+        ("jinja2", "Template rendering"),
+    ]
+    
+    for module, name in required_modules:
+        try:
+            __import__(module)
+        except ImportError:
+            missing.append(name)
+    
+    if missing:
+        return False, missing
+    
+    return True, []
+
+def check_ffmpeg():
+    """Check if FFmpeg is available."""
+    import shutil
+    return shutil.which("ffmpeg") is not None
+
 def main():
     try:
-        # No startup detection - let user choose agent first
-        # Detection only happens when user selects openai-compatible agent
+        # Check dependencies
+        print("[Startup] Checking dependencies...")
+        ok, missing = check_dependencies()
+        
+        if not ok:
+            print("\n[ERROR] Missing required packages:")
+            for pkg in missing:
+                print(f"  - {pkg}")
+            print("\nPlease install them:")
+            print("  pip install -r requirements.txt")
+            print("\nOr use the launcher: PPTPlaner.bat")
+            import time
+            time.sleep(5)
+            return
+        
         print("[Startup] Creating App...")
         app = App(["Loading models..."])
         print("[Startup] App created, starting mainloop...")
+        
+        # Check FFmpeg availability
+        if not check_ffmpeg():
+            import tkinter.messagebox as mb
+            mb.showwarning(
+                "FFmpeg 未安裝",
+                "FFmpeg 未安裝或不在 PATH 中。\n\n"
+                "這將影響影片生成功能。\n"
+                "您可以稍後安裝，不影響簡報生成。\n\n"
+                "安裝選項:\n"
+                "1. 手動安裝: https://ffmpeg.org/download.html\n"
+                "2. 使用安裝腳本: scripts\\install_ffmpeg.ps1"
+            )
         
         # Ensure window is visible
         app.update_idletasks()
