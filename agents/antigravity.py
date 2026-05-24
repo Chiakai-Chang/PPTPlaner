@@ -319,7 +319,13 @@ class AntigravityAdapter(AgentInterface):
         return ["gemini-1.5-pro", "gemini-2.0-flash"]
     
     def is_available(self) -> bool:
-        """Check if Antigravity CLI is available."""
+        """Check if Antigravity CLI is available.
+        
+        Checks multiple locations:
+        1. Command in PATH (via 'where' command)
+        2. Direct file path
+        3. Common installation locations
+        """
         import sys
         cmd = self.command_override or self.COMMAND
         
@@ -349,6 +355,18 @@ class AntigravityAdapter(AgentInterface):
                     return True
             except Exception as e:
                 print(f"[Antigravity] Exception in 'where' call: {e}", file=sys.stderr, flush=True)
+            
+            # Try common installation locations on Windows
+            local_appdata = os.environ.get('LOCALAPPDATA', '')
+            if local_appdata:
+                agy_paths = [
+                    os.path.join(local_appdata, 'agy', 'bin', 'agy.EXE'),
+                    os.path.join(local_appdata, 'agy', 'bin', 'agy.exe'),
+                ]
+                for agy_path in agy_paths:
+                    if os.path.exists(agy_path):
+                        print(f"[Antigravity] Command found at: {agy_path}", file=sys.stderr, flush=True)
+                        return True
         
         print(f"[Antigravity] Command NOT found", file=sys.stderr, flush=True)
         return False
