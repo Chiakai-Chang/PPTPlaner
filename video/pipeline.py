@@ -237,14 +237,15 @@ def run_slide_steps(
     # Step 1: TTS
     tts_provider = _create_tts_provider(tts_cfg)
     wav_path = clips_dir / f"{ctx.slide_id}.wav"
-    tts_provider.synthesize(ctx.notes_path.read_text(), wav_path)
+    tts_provider.generate(ctx.notes_path.read_text(), wav_path)
 
     # Step 2: Image
     img_provider = _create_image_provider(image_cfg)
     img_path = clips_dir / f"{ctx.slide_id}.png"
-    img_provider.render(
-        text=ctx.content_path.read_text(),
-        output=img_path,
+    img_provider.generate(
+        title=ctx.content_path.read_text(),
+        bullets=[],
+        output_png=img_path,
     )
 
     # Step 3: Clip

@@ -45,16 +45,14 @@ class FishSpeechProvider(TtsProvider):
     def name(self) -> str:
         return "fish-speech"
 
-    def synthesize(self, text: str, output_path: Path) -> Path:
+    def generate(self, text: str, output_wav: Path, language: str = "zh-TW") -> None:
         """
         Synthesize speech using Fish Speech.
 
         Args:
             text: Text to synthesize
-            output_path: Output WAV file path
-
-        Returns:
-            Path to generated audio file
+            output_wav: Output WAV file path
+            language: Language code (default: zh-TW)
 
         Raises:
             TtsProviderError: If synthesis fails
@@ -62,7 +60,7 @@ class FishSpeechProvider(TtsProvider):
         if not text or not text.strip():
             raise TtsProviderError("Empty text provided")
 
-        output_path.parent.mkdir(parents=True, exist_ok=True)
+        output_wav.parent.mkdir(parents=True, exist_ok=True)
 
         payload = {
             "model": self.model,
@@ -80,10 +78,8 @@ class FishSpeechProvider(TtsProvider):
             response.raise_for_status()
 
             # Write audio data
-            output_path.write_bytes(response.content)
-            logger.info(f"Fish Speech generated: {output_path} ({len(response.content)} bytes)")
-
-            return output_path
+            output_wav.write_bytes(response.content)
+            logger.info(f"Fish Speech generated: {output_wav} ({len(response.content)} bytes)")
 
         except httpx.ConnectError as e:
             raise TtsProviderError(

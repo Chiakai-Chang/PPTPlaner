@@ -69,29 +69,31 @@ class RunningHubProvider(ImageProvider):
             )
         return text
 
-    def render(
+    def generate(
         self,
-        text: str,
-        output: Path,
+        title: str,
+        bullets: list[str],
+        output_png: Path,
         width: int = 1920,
         height: int = 1080,
-    ) -> Path:
+    ) -> None:
         """
         Generate image from text via RunningHub API.
 
         Args:
-            text: Image description (Chinese or English)
-            output: Output PNG path
+            title: Image title/prompt (Chinese or English)
+            bullets: Bullet points to include
+            output_png: Output PNG path
             width: Image width
             height: Image height
-
-        Returns:
-            Path to generated image
 
         Raises:
             ImageProviderError: If generation fails
         """
-        output.parent.mkdir(parents=True, exist_ok=True)
+        # Combine title and bullets into prompt
+        text = f"{title}\n" + "\n".join(bullets) if bullets else title
+        
+        output_png.parent.mkdir(parents=True, exist_ok=True)
 
         prompt = self._translate_prompt(text)
 
@@ -130,12 +132,11 @@ class RunningHubProvider(ImageProvider):
             # Download image
             dl_response = self._client.get(download_url)
             dl_response.raise_for_status()
-            output.write_bytes(dl_response.content)
+            output_png.write_bytes(dl_response.content)
 
             logger.info(
-                f"Image generated: {output} ({output.stat().st_size} bytes)"
+                f"Image generated: {output_png} ({output_png.stat().st_size} bytes)"
             )
-            return output
 
         except httpx.HTTPStatusError as e:
             if e.response.status_code == 401:

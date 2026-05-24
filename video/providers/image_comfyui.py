@@ -157,29 +157,31 @@ class ComfyUIProvider(ImageProvider):
         except Exception as e:
             raise ImageProviderError(f"Failed to download image: {e}") from e
 
-    def render(
+    def generate(
         self,
-        text: str,
-        output: Path,
+        title: str,
+        bullets: list[str],
+        output_png: Path,
         width: int = 1920,
         height: int = 1080,
-    ) -> Path:
+    ) -> None:
         """
         Generate image from text prompt.
 
         Args:
-            text: Image generation prompt (Chinese)
-            output: Output PNG path
+            title: Image title/prompt (Chinese)
+            bullets: Bullet points to include
+            output_png: Output PNG path
             width: Image width
             height: Image height
-
-        Returns:
-            Path to generated image
 
         Raises:
             ImageProviderError: If generation fails
         """
-        output.parent.mkdir(parents=True, exist_ok=True)
+        # Combine title and bullets into prompt
+        text = f"{title}\n" + "\n".join(bullets) if bullets else title
+        
+        output_png.parent.mkdir(parents=True, exist_ok=True)
 
         # Load and update workflow
         workflow = self._load_workflow()
@@ -201,10 +203,9 @@ class ComfyUIProvider(ImageProvider):
 
         # Download image
         logger.info(f"Downloading image: {filename}")
-        self._download_image(filename, output)
+        self._download_image(filename, output_png)
 
-        logger.info(f"Image generated: {output} ({output.stat().st_size} bytes)")
-        return output
+        logger.info(f"Image generated: {output_png} ({output_png.stat().st_size} bytes)")
 
     def close(self) -> None:
         """Close HTTP client."""
