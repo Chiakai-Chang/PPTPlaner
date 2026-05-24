@@ -83,6 +83,14 @@ def run_video_pipeline(
     if not video_cfg.get("enabled", False):
         return None
 
+    # Validate configuration
+    from video.config_validation import validate_video_config
+    try:
+        validate_video_config(video_cfg)
+    except Exception as e:
+        print(f"[VIDEO] Configuration error: {e}", flush=True)
+        return None
+
     # Check dependencies
     _check_dependencies()
 
@@ -289,7 +297,7 @@ def _create_image_provider(image_cfg: dict) -> "ImageProvider":
 
     if provider_name == "none":
         from video.providers.image_none import NoneImageProvider
-        return NoneImageProvider(width=width, height=height)
+        return NoneImageProvider()
     elif provider_name == "comfyui":
         from video.providers.image_comfyui import ComfyUIProvider
         return ComfyUIProvider(
