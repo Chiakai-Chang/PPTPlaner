@@ -27,9 +27,15 @@ python run_ui.py
 
 ### 步驟 4：生成影片（可選）
 
+**透過 UI：**
 1. 選擇「影片生成」模式
 2. 選擇簡報輸出資料夾
 3. 點擊「開始生成」
+
+**透過命令列：**
+```bash
+python scripts/video_pipeline.py --output-dir output/20260521_... --enable-video
+```
 
 ---
 

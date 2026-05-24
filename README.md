@@ -32,8 +32,8 @@ python run_ui.py
 # 或生成簡報
 python scripts/orchestrate.py --source 你的文件.md
 
-# 或生成影片
-python scripts/video_pipeline.py
+# 或生成影片（需要 --enable-video）
+python scripts/video_pipeline.py --output-dir output/20260521_... --enable-video
 ```
 
 詳細說明請查看 [QUICKSTART.md](QUICKSTART.md)
