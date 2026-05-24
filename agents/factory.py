@@ -39,8 +39,13 @@ class AgentFactory:
         config = {"agent": agent_name}
         try:
             agent = AgentFactory.create(config)
-            return agent.get_status()
+            status = agent.get_status()
+            print(f"[AgentFactory] {agent_name} status: {status}")
+            return status
         except Exception as e:
+            import traceback
+            print(f"[AgentFactory] Error getting status for {agent_name}: {e}")
+            traceback.print_exc()
             return {
                 "name": agent_name,
                 "available": False,
