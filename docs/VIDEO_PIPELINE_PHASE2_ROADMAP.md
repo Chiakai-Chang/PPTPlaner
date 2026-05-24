@@ -49,16 +49,16 @@
 - [x] Pipeline 整合 (`video/pipeline.py` 支援 provider 切換)
 - [x] 環境檢測腳本 (`scripts/check_video_env.py`)
 - [x] 設定指南 (`docs/VIDEO_PIPELINE_SETUP_GUIDE.md`)
+- [x] TDD: Fish Speech Provider Tests (8 tests)
+- [x] TDD: ComfyUI Provider Tests (8 tests)
+- [x] TDD: RunningHub Provider Tests (8 tests)
 
 ### ⏳ 待完成
-- [ ] TDD: Fish Speech Provider Tests
-- [ ] TDD: ComfyUI Provider Tests
-- [ ] TDD: RunningHub Provider Tests
 - [ ] 中譯英 prompt 翻譯步驟
 - [ ] Phase 2 整合測試
 - [ ] config.yaml 驗證擴展
 
-### 預估剩餘時間：6-8 小時
+### 預估剩餘時間：4-6 小時
 
 ---
 
