@@ -451,6 +451,11 @@ class App(tk.Tk):
         from agents import AgentFactory
         
         agent_name = self.agent_type_var.get()
+        
+        # Debug logging before status check
+        print(f"[UI] About to check status for: {agent_name}")
+        print(f"[UI] Current working directory: {os.getcwd()}")
+        
         status = AgentFactory.get_agent_status(agent_name)
         
         # Debug logging
