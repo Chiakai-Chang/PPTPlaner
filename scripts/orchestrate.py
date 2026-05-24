@@ -834,23 +834,14 @@ def main():
     report_complete_phase()
     report_save()
     
-    # --- Optional: Video Pipeline ---
+    # --- Video Pipeline Notice ---
     if cfg.get("video", {}).get("enabled", False):
-        print_header("VIDEO PIPELINE")
-        try:
-            from video.pipeline import run_video_pipeline
-            video_out = run_video_pipeline(
-                project_root=ROOT,
-                config=cfg,
-                output_dir=output_dir,
-            )
-            if video_out:
-                print_success(f"Video produced: {video_out}")
-            else:
-                print(f"  ⚠ Video pipeline returned no output.", flush=True)
-        except Exception as e:
-            print(f"  ✗ Video pipeline error: {e}", flush=True)
-            rlog(f"VIDEO PIPELINE ERROR: {e}")
+        print_header("VIDEO GENERATION")
+        print_info("Video generation is now a separate process.")
+        print_info("To generate video after this run completes:")
+        print_info(f"  python scripts/video_pipeline.py --project-root {ROOT}")
+        print_info("Or with custom output:")
+        print_info(f"  python scripts/video_pipeline.py --output-dir {output_dir}")
 
     os.startfile(output_dir)
     print_header("Run Complete!")

@@ -12,6 +12,12 @@ dependencies = [
     "pywinpty>=3.0.0",  # Required for antigravity CLI TTY support
 ]
 
+# CLI Entry Points
+[project.scripts]
+pptplaner = "scripts.orchestrate:main"
+pptplaner-video = "scripts.video_pipeline:main"
+pptplaner-video-check = "scripts.check_video_env:main"
+
 # Optional dependencies for development
 [project.optional-dependencies]
 dev = [
