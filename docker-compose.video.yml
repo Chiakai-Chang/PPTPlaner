@@ -1,0 +1,86 @@
+# ============================================================
+#  PPTPlaner Video Pipeline - Docker Services
+#  啟動 Fish Speech 與 ComfyUI 服務
+# ============================================================
+
+version: '3.8'
+
+services:
+  # --- Fish Speech TTS Server ---
+  fish-speech:
+    image: fishaudio/fish-speech:latest
+    # image: fishaudio/fish-speech:1.4  # pin version if needed
+    container_name: ppp-fish-speech
+    restart: unless-stopped
+    ports:
+      - "8080:8080"
+    environment:
+      - PYTHONUNBUFFERED=1
+    volumes:
+      - fish-speech-data:/app/data
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: 1
+              capabilities: [gpu]
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8080/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 60s
+
+  # --- ComfyUI Image Generation ---
+  comfyui:
+    image: ghcr.io/Comfy-Org/comfyui:latest
+    # image: ghcr.io/Comfy-Org/comfyui:stable  # for stability
+    container_name: ppp-comfyui
+    restart: unless-stopped
+    ports:
+      - "8188:8188"
+    environment:
+      - COMMANDLINE_ARGS=--listen 0.0.0.0
+    volumes:
+      - comfyui-inputs:/root/ComfyUI/input
+      - comfyui-outputs:/root/ComfyUI/output
+      - comfyui-models:/root/ComfyUI/models
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: 1
+              capabilities: [gpu]
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8188"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 120s
+
+volumes:
+  fish-speech-data:
+  comfyui-inputs:
+  comfyui-outputs:
+  comfyui-models:
+
+# ============================================================
+#  使用說明
+# ============================================================
+# 1. 啟動所有服務:
+#    docker compose -f docker-compose.video.yml up -d
+#
+# 2. 只啟動 Fish Speech:
+#    docker compose -f docker-compose.video.yml up -d fish-speech
+#
+# 3. 只啟動 ComfyUI:
+#    docker compose -f docker-compose.video.yml up -d comfyui
+#
+# 4. 查看狀態:
+#    docker compose -f docker-compose.video.yml ps
+#
+# 5. 停止所有服務:
+#    docker compose -f docker-compose.video.yml down
+# ============================================================

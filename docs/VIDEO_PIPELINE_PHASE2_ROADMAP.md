@@ -41,24 +41,24 @@
 
 ## Phase 2 任務清單
 
-### 前置需求
-- [ ] Fish Speech Docker 環境驗證
-- [ ] ComfyUI 環境驗證（可選，需 GPU 16GB+）
-- [ ] RunningHub API key 測試
+### ✅ 已完成
+- [x] Fish Speech Provider (`video/providers/tts_fish.py`)
+- [x] ComfyUI Provider (`video/providers/image_comfyui.py`)
+- [x] RunningHub Provider (`video/providers/image_runninghub.py`)
+- [x] Docker Compose 配置 (`docker-compose.video.yml`)
+- [x] Pipeline 整合 (`video/pipeline.py` 支援 provider 切換)
+- [x] 環境檢測腳本 (`scripts/check_video_env.py`)
+- [x] 設定指南 (`docs/VIDEO_PIPELINE_SETUP_GUIDE.md`)
 
-### 任務規劃
+### ⏳ 待完成
+- [ ] TDD: Fish Speech Provider Tests
+- [ ] TDD: ComfyUI Provider Tests
+- [ ] TDD: RunningHub Provider Tests
+- [ ] 中譯英 prompt 翻譯步驟
+- [ ] Phase 2 整合測試
+- [ ] config.yaml 驗證擴展
 
-| 任務 | 說明 | 依賴 | 預估時間 |
-|------|------|------|----------|
-| T015 | TDD: `tts_fish.py` — Fish Speech HTTP client | T001 | 2h |
-| T016 | TDD: `image_comfyui.py` — ComfyUI client | T001 | 3h |
-| T017 | TDD: `image_runninghub.py` — RunningHub API | T001 | 2h |
-| T018 | 中譯英 prompt 翻譯步驟 | T016, T017 | 1h |
-| T019 | Docker Compose: Fish Speech 一鍵啟動 | 無 | 1h |
-| T020 | config.yaml 驗證擴展 | T015-T017 | 1h |
-| T021 | Phase 2 整合測試 | T015-T020 | 2h |
-
-### 預估總時間：12-15 小時
+### 預估剩餘時間：6-8 小時
 
 ---
 

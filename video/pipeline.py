@@ -235,22 +235,12 @@ def run_slide_steps(
     image_cfg = config.get("video", {}).get("image", {})
 
     # Step 1: TTS
-    from video.providers.tts_edge import EdgeTtsProvider
-
-    tts_provider = EdgeTtsProvider(
-        voice=tts_cfg.get("edge_tts_voice", "zh-TW-HsiaoChenNeural"),
-        speed=tts_cfg.get("edge_tts_speed", "+0%"),
-    )
+    tts_provider = _create_tts_provider(tts_cfg)
     wav_path = clips_dir / f"{ctx.slide_id}.wav"
     tts_provider.synthesize(ctx.notes_path.read_text(), wav_path)
 
     # Step 2: Image
-    from video.providers.image_none import NoneImageProvider
-
-    img_provider = NoneImageProvider(
-        width=image_cfg.get("width", 1920),
-        height=image_cfg.get("height", 1080),
-    )
+    img_provider = _create_image_provider(image_cfg)
     img_path = clips_dir / f"{ctx.slide_id}.png"
     img_provider.render(
         text=ctx.content_path.read_text(),
@@ -266,3 +256,49 @@ def run_slide_steps(
         output_mp4=ctx.clip_path,
         fps=VIDEO_DEFAULT_FPS,
     )
+
+
+def _create_tts_provider(tts_cfg: dict) -> "TtsProvider":
+    """Create TTS provider based on config."""
+    provider_name = tts_cfg.get("provider", "edge-tts")
+
+    if provider_name == "edge-tts":
+        from video.providers.tts_edge import EdgeTtsProvider
+        return EdgeTtsProvider(
+            voice=tts_cfg.get("edge_tts_voice", "zh-TW-HsiaoChenNeural"),
+            speed=tts_cfg.get("edge_tts_speed", "+0%"),
+        )
+    elif provider_name == "fish-speech":
+        from video.providers.tts_fish import FishSpeechProvider
+        return FishSpeechProvider(
+            url=tts_cfg.get("fish_speech_url", "http://localhost:8080"),
+            model=tts_cfg.get("fish_speech_model", "fish-speech-1.4"),
+            voice=tts_cfg.get("fish_speech_voice", "default"),
+            speed=tts_cfg.get("fish_speech_speed", 1.0),
+        )
+    else:
+        raise RuntimeError(f"Unknown TTS provider: {provider_name}")
+
+
+def _create_image_provider(image_cfg: dict) -> "ImageProvider":
+    """Create image provider based on config."""
+    provider_name = image_cfg.get("provider", "none")
+    width = image_cfg.get("width", 1920)
+    height = image_cfg.get("height", 1080)
+
+    if provider_name == "none":
+        from video.providers.image_none import NoneImageProvider
+        return NoneImageProvider(width=width, height=height)
+    elif provider_name == "comfyui":
+        from video.providers.image_comfyui import ComfyUIProvider
+        return ComfyUIProvider(
+            url=image_cfg.get("comfyui_url", "http://localhost:8188"),
+            workflow_file=image_cfg.get("comfyui_workflow", "image_flux.json"),
+        )
+    elif provider_name == "runninghub":
+        from video.providers.image_runninghub import RunningHubProvider
+        api_key = image_cfg.get("runninghub_api_key", "")
+        workflow_id = image_cfg.get("runninghub_workflow", "image_flux.json")
+        return RunningHubProvider(api_key=api_key, workflow_id=workflow_id)
+    else:
+        raise RuntimeError(f"Unknown image provider: {provider_name}")
