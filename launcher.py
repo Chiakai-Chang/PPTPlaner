@@ -261,6 +261,9 @@ def main():
     success("啟動中...")
     print()
     
+    # Ensure working directory is project root
+    os.chdir(ROOT)
+    
     ui_script = ROOT / "run_ui.py"
     if not ui_script.exists():
         error("找不到 run_ui.py")
