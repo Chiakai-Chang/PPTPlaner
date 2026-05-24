@@ -451,15 +451,7 @@ class App(tk.Tk):
         from agents import AgentFactory
         
         agent_name = self.agent_type_var.get()
-        
-        # Debug logging before status check
-        print(f"[UI] About to check status for: {agent_name}")
-        print(f"[UI] Current working directory: {os.getcwd()}")
-        
         status = AgentFactory.get_agent_status(agent_name)
-        
-        # Debug logging
-        print(f"[UI] Agent status debug: {status}")
         
         if status.get("available"):
             self.agent_status_label.config(text="(可用)", fg="#4caf50")  # Green
@@ -469,9 +461,6 @@ class App(tk.Tk):
             self.agent_status_label.config(text="(不可用)", fg="#f44336")  # Red
             self.agent_status_label.config(cursor="hand2")
             print(f"[UI] ❌ Agent {agent_name} is not available")
-            # Show error if present
-            if "error" in status:
-                print(f"[UI] Error: {status['error']}")
             # Add tooltip with hint
             if "hint" in status:
                 self.agent_status_label.bind("<Enter>", lambda e: self._show_tooltip(status["hint"]))

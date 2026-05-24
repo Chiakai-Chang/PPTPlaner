@@ -31,29 +31,23 @@ from .logging_config import agent_logger
 # Import adapters (auto-registers them)
 try:
     from .antigravity import AntigravityAdapter  # noqa: F401
-    print("[agents] AntigravityAdapter imported successfully")
-except ImportError as e:
-    print(f"[agents] Failed to import AntigravityAdapter: {e}")
+except ImportError:
+    pass
 
 try:
     from .claude import ClaudeCodeAdapter  # noqa: F401
-    print("[agents] ClaudeCodeAdapter imported successfully")
-except ImportError as e:
-    print(f"[agents] Failed to import ClaudeCodeAdapter: {e}")
+except ImportError:
+    pass
 
 try:
     from .openai_compatible import OpenAICompatibleAdapter  # noqa: F401
-    print("[agents] OpenAICompatibleAdapter imported successfully")
-except ImportError as e:
-    print(f"[agents] Failed to import OpenAICompatibleAdapter: {e}")
+except ImportError:
+    pass
 
 try:
     from .openai_direct import OpenAIDirectAdapter  # noqa: F401
-    print("[agents] OpenAIDirectAdapter imported successfully")
-except ImportError as e:
-    print(f"[agents] Failed to import OpenAIDirectAdapter: {e}")
-
-print("[agents] Agent imports complete")
+except ImportError:
+    pass
 
 __all__ = [
     'AgentInterface',
