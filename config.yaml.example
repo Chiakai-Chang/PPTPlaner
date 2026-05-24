@@ -1,0 +1,86 @@
+# ============================================================
+#  PPTPlaner - 配置範本
+#  複製此檔案為 config.yaml 並根據需求修改
+# ============================================================
+
+# 專案版本
+version: 3.9.1
+
+# 輸入文件
+source_file: "source/Chapter5.md"
+
+# AI Agent 設定
+agent: "antigravity"
+agent_config:
+  model: null  # 如: gemini-1.5-pro
+
+# 備忘稿語言
+notes_locale: "zh-TW"
+preserve_english_terms: true
+
+# 切頁策略
+split_strategy: "semantic"
+max_pages_per_file: 10
+
+# 備忘稿設定
+memo_per_page: true
+memo_target_time_min: 2
+memo_target_time_max: 3
+
+# 輸出目錄
+slides_dir: "slides"
+notes_dir: "notes"
+diagrams_dir: "diagrams"
+guide_file: "指引.html"
+
+# ============================================================
+#  影片輸出設定 (Video Output Settings)
+#  ⚠️  注意：影片生成已從 orchestrate.py 分離為獨立流程
+#  ⚠️  請先運行 orchestrate.py 產生簡報後，再單獨運行影片生成
+#  ⚠️  命令: python scripts/video_pipeline.py
+# ============================================================
+video:
+  enabled: false                      # 是否啟用影片生成 (預設關閉)
+  
+  # --- TTS 設定 ---
+  tts:
+    provider: "edge-tts"              # 可選: edge-tts, fish-speech
+    edge_tts_voice: "zh-TW-HsiaoChenNeural"
+    edge_tts_speed: "+0%"
+  
+  # --- 圖像設定 ---
+  image:
+    provider: "none"                  # 可選: none, comfyui, runninghub
+    width: 1920
+    height: 1080
+  
+  # --- 影片規格 ---
+  fps: 30
+  bgm_file: null                      # BGM 檔案路徑
+  bgm_volume: 0.15
+  
+  # --- 開場設定 ---
+  intro:
+    enabled: true
+    text: "大家好，歡迎收看本期影片！"
+    channel_name: "我的頻道"
+    duration_sec: 8
+  
+  # --- 結尾設定 ---
+  outro:
+    enabled: true
+    text: "感謝收看，歡迎訂閱！"
+    channel_name: "我的頻道"
+    duration_sec: 12
+
+# ============================================================
+#  快速使用指南
+# ============================================================
+# 1. 生成簡報:
+#    python scripts/orchestrate.py --source <your_file.md>
+#
+# 2. 生成影片 (分離執行):
+#    python scripts/video_pipeline.py
+#
+# 3. 查看環境狀態:
+#    python scripts/check_video_env.py
