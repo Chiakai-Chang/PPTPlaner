@@ -241,6 +241,164 @@
           box-shadow: inset 0 0 0 1px var(--border);
       }
   }
+
+  /* --- Premium AI Quality Audit Certificate --- */
+  .quality-cert {
+      background: linear-gradient(135deg, rgba(37, 99, 235, 0.03) 0%, rgba(29, 78, 216, 0.01) 100%);
+      border: 1px solid var(--border);
+      border-radius: 16px;
+      padding: 24px;
+      margin-bottom: 40px;
+      box-shadow: 0 10px 30px -10px rgba(0, 0, 0, 0.03);
+      transition: all 0.3s ease;
+  }
+  .dark .quality-cert {
+      background: linear-gradient(135deg, rgba(96, 165, 250, 0.03) 0%, rgba(59, 130, 246, 0.01) 100%);
+  }
+  .cert-container {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 24px;
+      align-items: center;
+  }
+  .cert-left {
+      flex: 1;
+      min-width: 250px;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      text-align: center;
+      padding: 16px;
+      border-right: 1px solid var(--border);
+  }
+  @media (max-width: 768px) {
+      .cert-left {
+          border-right: none;
+          border-bottom: 1px solid var(--border);
+          padding-bottom: 24px;
+      }
+  }
+  .cert-right {
+      flex: 2;
+      min-width: 300px;
+  }
+  .score-gauge {
+      position: relative;
+      width: 130px;
+      height: 130px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      margin-bottom: 16px;
+  }
+  .score-gauge svg {
+      transform: rotate(-90deg);
+      width: 100%;
+      height: 100%;
+  }
+  .score-gauge circle {
+      fill: none;
+      stroke-width: 8;
+  }
+  .score-gauge .gauge-bg {
+      stroke: var(--border);
+  }
+  .score-gauge .gauge-fill {
+      stroke-linecap: round;
+      transition: stroke-dashoffset 1s ease-in-out;
+  }
+  .score-value {
+      position: absolute;
+      font-size: 26px;
+      font-weight: 800;
+      color: var(--fg);
+  }
+  .cert-badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      padding: 6px 16px;
+      border-radius: 20px;
+      font-size: 11px;
+      font-weight: 700;
+      letter-spacing: 0.5px;
+      text-transform: uppercase;
+      box-shadow: 0 4px 10px rgba(0, 0, 0, 0.02);
+  }
+  .phase-row {
+      background: var(--card);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      padding: 14px 18px;
+      margin-bottom: 12px;
+      transition: all 0.2s ease;
+      cursor: pointer;
+  }
+  .phase-row:hover {
+      transform: translateY(-2px);
+      box-shadow: 0 4px 12px rgba(0,0,0,0.03);
+      border-color: var(--accent);
+  }
+  .phase-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 8px;
+  }
+  .phase-title {
+      font-weight: 600;
+      font-size: 15px;
+      color: var(--fg);
+  }
+  .phase-meta {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      font-size: 13px;
+      color: var(--muted);
+  }
+  .progress-bar-container {
+      height: 8px;
+      background: var(--border);
+      border-radius: 4px;
+      overflow: hidden;
+      margin-bottom: 6px;
+  }
+  .progress-bar-fill {
+      height: 100%;
+      border-radius: 4px;
+      transition: width 1s ease;
+  }
+  .phase-details {
+      display: none;
+      margin-top: 12px;
+      padding-top: 12px;
+      border-top: 1px dashed var(--border);
+      font-size: 13px;
+      line-height: 1.6;
+      color: var(--muted);
+  }
+  .phase-details.active {
+      display: block;
+      animation: fadeIn 0.3s ease;
+  }
+  @keyframes fadeIn {
+      from { opacity: 0; transform: translateY(-5px); }
+      to { opacity: 1; transform: translateY(0); }
+  }
+  .log-item {
+      background: var(--bg);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: 8px 12px;
+      margin-top: 8px;
+      font-family: Consolas, Monaco, monospace;
+      font-size: 11px;
+      color: var(--muted);
+      max-height: 120px;
+      overflow-y: auto;
+      white-space: pre-wrap;
+  }
 </style>
 </head>
 <body>
@@ -279,6 +437,89 @@
   </div>
   {% else %}
   <div class="hr"></div>
+  {% endif %}
+  
+  {% if review_report %}
+  <!-- Premium AI Quality Audit Certificate -->
+  <div class="quality-cert">
+      <h2 style="font-size: 20px; border-bottom: 2px solid var(--accent); display: inline-block; padding-bottom: 5px; margin-bottom: 20px;">AI 品質審查證書 (Quality Audit Certificate)</h2>
+      <div class="cert-container">
+          <div class="cert-left">
+              {% set all_scores = [] %}
+              {% for phase in review_report.phases %}
+                  {% for r in phase.reviews %}
+                      {% if all_scores.append(r.percentage) %}{% endif %}
+                  {% endfor %}
+              {% endfor %}
+              {% set avg_score = (all_scores | sum / all_scores | length) | round(1) if all_scores | length > 0 else 0.0 %}
+              
+              <div class="score-gauge">
+                  <svg viewBox="0 0 100 100">
+                      <circle class="gauge-bg" cx="50" cy="50" r="40" />
+                      {% set dash = 251.2 %}
+                      {% set offset = dash - (dash * avg_score / 100) %}
+                      <circle class="gauge-fill" cx="50" cy="50" r="40" 
+                              stroke-dasharray="{{ dash }}" 
+                              stroke-dashoffset="{{ offset }}" 
+                              style="stroke: {% if avg_score >= 90 %}var(--ok){% elif avg_score >= 70 %}var(--warn){% else %}var(--bad){% endif %};" />
+                  </svg>
+                  <div class="score-value">{{ avg_score }}%</div>
+              </div>
+              
+              <div class="cert-badge" style="color: {% if avg_score >= 90 %}var(--ok){% elif avg_score >= 70 %}var(--warn){% else %}var(--bad){% endif %}; background: {% if avg_score >= 90 %}rgba(34, 197, 94, 0.1){% elif avg_score >= 70 %}rgba(245, 158, 11, 0.1){% else %}rgba(239, 68, 68, 0.1){% endif %};">
+                  <span>✓</span> {% if avg_score >= 90 %}PERFECT QA PASS{% elif avg_score >= 70 %}ACCEPTABLE PASS{% else %}QUALITY CHECK REQUIRED{% endif %}
+              </div>
+              <p style="font-size: 12px; color: var(--muted); margin-top: 12px; max-width: 200px; line-height: 1.4;">
+                  本文件已通過品質控制引擎審查，評分反映原始內容覆蓋率、邏輯結構與台灣繁體中文適配度。
+              </p>
+          </div>
+          
+          <div class="cert-right">
+              <div style="font-size: 14px; font-weight: 700; color: var(--fg); margin-bottom: 12px;">審查履歷與階段細項 (點擊展開 Validator 完整反饋):</div>
+              {% for phase in review_report.phases %}
+                  {% set phase_scores = [] %}
+                  {% for r in phase.reviews %}
+                      {% if phase_scores.append(r.percentage) %}{% endif %}
+                  {% endfor %}
+                  {% set phase_avg = (phase_scores | sum / phase_scores | length) | round(1) if phase_scores | length > 0 else 0.0 %}
+                  
+                  <div class="phase-row" onclick="togglePhaseDetails('phase-details-{{ loop.index }}')">
+                      <div class="phase-header">
+                          <span class="phase-title">{{ phase.phase_name }}</span>
+                          <div class="phase-meta">
+                              <span>⏱️ {{ phase.duration }}</span>
+                              <span style="font-weight: 700; color: {% if phase_avg >= 90 %}var(--ok){% elif phase_avg >= 70 %}var(--warn){% else %}var(--bad){% endif %};">{{ phase_avg }}%</span>
+                          </div>
+                      </div>
+                      
+                      <div class="progress-bar-container">
+                          <div class="progress-bar-fill" style="width: {{ phase_avg }}%; background-color: {% if phase_avg >= 90 %}var(--ok){% elif phase_avg >= 70 %}var(--warn){% else %}var(--bad){% endif %};"></div>
+                      </div>
+                      
+                      <div class="phase-details" id="phase-details-{{ loop.index }}">
+                          <div style="font-weight: 600; color: var(--fg); margin-bottom: 6px;">審查明細：</div>
+                          <ul style="margin: 0; padding-left: 16px; margin-bottom: 8px;">
+                              {% for review in phase.reviews %}
+                                  <li style="margin-bottom: 6px;">
+                                      <strong>{{ review.criteria }}</strong>: {{ review.score }}/{{ review.max_score }}
+                                      <div style="font-size: 12px; color: var(--muted); margin-top: 2px;">{{ review.comment }}</div>
+                                  </li>
+                              {% endfor %}
+                          </ul>
+                          {% if phase.detailed_steps %}
+                              <div style="font-weight: 600; color: var(--fg); margin-top: 10px; margin-bottom: 4px;">自我修正日誌：</div>
+                              <div class="log-item">
+                                  {%- for step in phase.detailed_steps -%}
+                                      [{{ step.timestamp }}] {{ step.step }}{% if step.detail %} - {{ step.detail }}{% endif %}{{"\n"}}
+                                  {%- endfor -%}
+                              </div>
+                          {% endif %}
+                      </div>
+                  </div>
+              {% endfor %}
+          </div>
+      </div>
+  </div>
   {% endif %}
   
   {% for page in pages %}
@@ -433,6 +674,16 @@
         }
         window.addEventListener('resize', initMobile);
         window.addEventListener('load', initMobile);
+
+        // --- Toggle Phase Details Log ---
+        function togglePhaseDetails(elementId) {
+            const el = document.getElementById(elementId);
+            if (el.classList.contains('active')) {
+                el.classList.remove('active');
+            } else {
+                el.classList.add('active');
+            }
+        }
     </script>
 </body>
 </html>

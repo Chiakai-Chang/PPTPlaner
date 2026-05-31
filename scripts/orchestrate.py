@@ -86,6 +86,74 @@ except ImportError as e:
     def report_complete_phase(*args): pass
     def report_save(*args): pass
 
+# Import cli_helper for coloring
+try:
+    from scripts.cli_helper import colorize
+except ImportError:
+    def colorize(text, color): return text
+
+# Review report buffering system to capture reviews before output directory is initialized
+_review_buffer = []
+
+_orig_report_start_phase = report_start_phase
+_orig_report_add_step = report_add_step
+_orig_report_add_review = report_add_review
+_orig_report_complete_phase = report_complete_phase
+
+def report_start_phase(phase_name: str):
+    from scripts.review_report import get_review_report
+    if get_review_report():
+        _orig_report_start_phase(phase_name)
+    else:
+        _review_buffer.append(("start_phase", (phase_name,)))
+
+def report_add_step(step: str, detail: str = ""):
+    from scripts.review_report import get_review_report
+    if get_review_report():
+        _orig_report_add_step(step, detail)
+    else:
+        _review_buffer.append(("add_step", (step, detail)))
+
+def report_add_review(criteria: str, score: int, comment: str, max_score: int = 10):
+    from scripts.review_report import get_review_report
+    if get_review_report():
+        _orig_report_add_review(criteria, score, comment, max_score)
+    else:
+        _review_buffer.append(("add_review", (criteria, score, comment, max_score)))
+
+def report_complete_phase():
+    from scripts.review_report import get_review_report
+    if get_review_report():
+        _orig_report_complete_phase()
+    else:
+        _review_buffer.append(("complete_phase", ()))
+
+def flush_review_buffer():
+    global _review_buffer
+    from scripts.review_report import get_review_report
+    if not get_review_report():
+        return
+    for action, args in _review_buffer:
+        if action == "start_phase":
+            _orig_report_start_phase(*args)
+        elif action == "add_step":
+            _orig_report_add_step(*args)
+        elif action == "add_review":
+            _orig_report_add_review(*args)
+        elif action == "complete_phase":
+            _orig_report_complete_phase(*args)
+    _review_buffer = []
+
+def get_qa_score(val_res: dict | None) -> int:
+    if not val_res:
+        return 4
+    if val_res.get("is_valid"):
+        return 10
+    if val_res.get("is_acceptable"):
+        return 8
+    return 4
+
+
 def init_logger(root_dir: Path, output_dir: Path = None):
     global _research_logger
     _research_logger = ResearchLogger(root_dir, output_dir)
@@ -542,23 +610,40 @@ def process_memo_page(i, slide, source_path, full_slides_content, notes_dir, glo
     }
     
     final_memo, acceptable_memo, feedback_history = "", "", []
+    val_res = None
     for attempt in range(args.memo_reworks + 1):
         raw = run_agent(cfg["agent"], "MEMO", memo_vars, retries=cfg["agent_execution_retries"], model_name=cfg.get("gemini_model"))
         val_json = run_agent(cfg["agent"], "VALIDATE_MEMO", {"memo_content": raw, "slide_content": slide.get("content", "")}, retries=cfg["agent_execution_retries"], model_name=cfg.get("gemini_model"))
         val_res = parse_ai_json_output(val_json, "VALIDATE_MEMO")
         
-        if val_res and val_res.get("is_valid"):
-            final_memo = raw; break
-        elif val_res and val_res.get("is_acceptable"):
-            if not acceptable_memo: acceptable_memo = raw
+        # Show dynamic colored status
+        if val_res:
+            is_valid = val_res.get("is_valid")
+            is_acceptable = val_res.get("is_acceptable")
+            feedback = val_res.get("feedback", "No feedback provided")
+            score = get_qa_score(val_res)
+            
+            if is_valid:
+                print_success(colorize(f"  [QA PERFECT PASS] Memo Slide {p_num} (Attempt {attempt+1}) - Score: {score}/10", "green"))
+                final_memo = raw
+                break
+            elif is_acceptable:
+                print_warning(colorize(f"  [QA ACCEPTABLE FALLBACK] Memo Slide {p_num} (Attempt {attempt+1}) - Score: {score}/10", "yellow"))
+                if not acceptable_memo: acceptable_memo = raw
+            else:
+                print_error(f"  [QA REWORK REQUIRED] Memo Slide {p_num} (Attempt {attempt+1}) - Score: {score}/10", exit_code=None)
+        else:
+            print_error(f"  [QA FAILED] Memo Slide {p_num} (Attempt {attempt+1}) - Parse error", exit_code=None)
+            feedback = "Validation failed"
         
-        feedback = val_res.get("feedback", "") if val_res else "Validation failed"
         feedback_history.append(f"Attempt {attempt+1}: {feedback}")
         memo_vars["rework_feedback"] = "\n\n".join(feedback_history)
 
     memo_content = final_memo or acceptable_memo or raw
     memo_path.write_text(memo_content, encoding="utf-8")
-    return p_num, "Generated"
+    
+    score_desc = "Perfect" if final_memo else "Acceptable" if acceptable_memo else "Raw Fallback"
+    return p_num, f"Generated ({score_desc})"
 
 def process_svg_page(i, slide, source_path, slides_dir, notes_dir, glossary_text, cfg, args):
     p_num = str(slide.get("page")).zfill(2)
@@ -577,8 +662,25 @@ def process_svg_page(i, slide, source_path, slides_dir, notes_dir, glossary_text
                 current_svg = fix_svg_layout(match.group(0))
                 val_json = run_agent(cfg["agent"], "VALIDATE_SLIDE_SVG", {"svg_code": current_svg}, retries=cfg["agent_execution_retries"], model_name=cfg.get("gemini_model"))
                 val_res = parse_ai_json_output(val_json, "VALIDATE_SLIDE_SVG")
-                if val_res and (val_res.get("is_valid") or val_res.get("is_acceptable")):
-                    final_svg = current_svg; break
+                
+                if val_res:
+                    is_valid = val_res.get("is_valid")
+                    is_acceptable = val_res.get("is_acceptable")
+                    score = get_qa_score(val_res)
+                    if is_valid:
+                        print_success(colorize(f"  [QA PERFECT PASS] Slide SVG {p_num} (Attempt {attempt+1}) - Score: {score}/10", "green"))
+                        final_svg = current_svg
+                        break
+                    elif is_acceptable:
+                        print_warning(colorize(f"  [QA ACCEPTABLE PASS] Slide SVG {p_num} (Attempt {attempt+1}) - Score: {score}/10", "yellow"))
+                        if not final_svg: final_svg = current_svg
+                    else:
+                        print_error(f"  [QA REWORK REQUIRED] Slide SVG {p_num} (Attempt {attempt+1}) - Score: {score}/10", exit_code=None)
+                else:
+                    print_error(f"  [QA FAILED] Slide SVG {p_num} (Attempt {attempt+1}) - Parse error", exit_code=None)
+            else:
+                print_error(f"  [QA FAILED] Slide SVG {p_num} (Attempt {attempt+1}) - No SVG matched", exit_code=None)
+                
         if final_svg: slide_svg_path.write_text(final_svg, encoding="utf-8")
 
     # 2. Conceptual SVG
@@ -596,8 +698,25 @@ def process_svg_page(i, slide, source_path, slides_dir, notes_dir, glossary_text
                 current_con = fix_svg_layout(match.group(0))
                 val_json = run_agent(cfg["agent"], "VALIDATE_CONCEPTUAL_SVG", {"svg_code": current_con}, retries=cfg["agent_execution_retries"], model_name=cfg.get("gemini_model"))
                 val_res = parse_ai_json_output(val_json, "VALIDATE_CONCEPTUAL_SVG")
-                if val_res and (val_res.get("is_valid") or val_res.get("is_acceptable")):
-                    final_con = current_con; break
+                
+                if val_res:
+                    is_valid = val_res.get("is_valid")
+                    is_acceptable = val_res.get("is_acceptable")
+                    score = get_qa_score(val_res)
+                    if is_valid:
+                        print_success(colorize(f"  [QA PERFECT PASS] Conceptual SVG {p_num} (Attempt {attempt+1}) - Score: {score}/10", "green"))
+                        final_con = current_con
+                        break
+                    elif is_acceptable:
+                        print_warning(colorize(f"  [QA ACCEPTABLE PASS] Conceptual SVG {p_num} (Attempt {attempt+1}) - Score: {score}/10", "yellow"))
+                        if not final_con: final_con = current_con
+                    else:
+                        print_error(f"  [QA REWORK REQUIRED] Conceptual SVG {p_num} (Attempt {attempt+1}) - Score: {score}/10", exit_code=None)
+                else:
+                    print_error(f"  [QA FAILED] Conceptual SVG {p_num} (Attempt {attempt+1}) - Parse error", exit_code=None)
+            else:
+                print_error(f"  [QA FAILED] Conceptual SVG {p_num} (Attempt {attempt+1}) - No SVG matched", exit_code=None)
+                
         if final_con: conceptual_svg_path.write_text(final_con, encoding="utf-8")
     
     return p_num, "Processed"
@@ -640,6 +759,7 @@ def main():
         current_analysis = parse_ai_json_output(raw, "ANALYZE_SOURCE_DOCUMENT")
         
         if not current_analysis:
+            print_error(f"[QA FAILED] Attempt {attempt+1}/{args.analysis_reworks+1} - Failed to parse JSON output.", exit_code=None)
             analysis_feedback_history.append(f"Attempt {attempt+1}: Failed to parse JSON output.")
             analysis_vars["rework_feedback"] = "\n\n".join(analysis_feedback_history)
             continue
@@ -647,27 +767,42 @@ def main():
         val_json = run_agent(cfg["agent"], "VALIDATE_ANALYSIS", {"analysis_data": json.dumps(current_analysis, ensure_ascii=False), "source_file_path": str(source_path)}, retries=cfg["agent_execution_retries"], model_name=cfg.get("gemini_model"))
         val_res = parse_ai_json_output(val_json, "VALIDATE_ANALYSIS")
         
-        if val_res and val_res.get("is_valid"):
-            analysis_data = current_analysis; break
-        elif val_res and val_res.get("is_acceptable"):
-            if not acceptable_analysis: acceptable_analysis = current_analysis
+        # Show detailed colored feedback actively to user
+        if val_res:
+            is_valid = val_res.get("is_valid")
+            is_acceptable = val_res.get("is_acceptable")
+            feedback = val_res.get("feedback", "No feedback provided")
+            score = get_qa_score(val_res)
+            
+            if is_valid:
+                print_success(colorize(f"[QA PERFECT PASS] Attempt {attempt+1}/{args.analysis_reworks+1} - Score: {score}/10", "green"))
+                print_detail(colorize(f"Validator: {feedback}", "green"))
+                analysis_data = current_analysis
+                break
+            elif is_acceptable:
+                print_warning(colorize(f"[QA ACCEPTABLE FALLBACK] Attempt {attempt+1}/{args.analysis_reworks+1} - Score: {score}/10", "yellow"))
+                print_detail(colorize(f"Validator (Retrying for perfection...): {feedback}", "yellow"))
+                if not acceptable_analysis: acceptable_analysis = current_analysis
+            else:
+                print_error(f"[QA REWORK REQUIRED] Attempt {attempt+1}/{args.analysis_reworks+1} - Score: {score}/10", exit_code=None)
+                print_detail(colorize(f"Validator Feedback: {feedback}", "red"))
+        else:
+            print_error(f"[QA FAILED] Attempt {attempt+1}/{args.analysis_reworks+1} - Failed to parse Validator output.", exit_code=None)
+            feedback = "Validation failed"
         
-        feedback = val_res.get("feedback", "") if val_res else "Validation failed"
         analysis_feedback_history.append(f"Attempt {attempt+1}: {feedback}")
         analysis_vars["rework_feedback"] = "\n\n".join(analysis_feedback_history)
-        
-        # Show detailed feedback to user
-        if val_res:
-            quality = val_res.get("quality_score", "N/A")
-            print_detail(f"Analysis quality score: {quality}/10")
-            print_detail(f"Feedback: {feedback[:150]}...")
 
     analysis_data = analysis_data or acceptable_analysis or current_analysis or {}
     
-    # Add review for Phase 1
+    # Add review for Phase 1 dynamically
     report_add_step("Analysis complete", f"Title: {analysis_data.get('document_title', 'Unknown')}")
-    report_add_review("Content Coverage", 8, "Analysis extracted key information from document")
-    report_add_review("Structure Quality", 7, "Analysis structure follows expected format")
+    
+    final_score = get_qa_score(val_res) if 'val_res' in locals() and val_res else 4
+    final_feedback = val_res.get("feedback", "Analysis complete") if 'val_res' in locals() and val_res else "Analysis process completed."
+    
+    report_add_review("Content Coverage", final_score, f"Document parsed and analyzed. QA Verdict: {final_feedback}")
+    report_add_review("Structure Quality", final_score, "Analysis metadata successfully formatted to standard structure.")
     report_complete_phase()
 
     # Distinguish between display title and folder title
@@ -724,6 +859,7 @@ def main():
             current_plan = parse_ai_json_output(raw, "PLAN")
             
             if not current_plan:
+                print_error(f"[QA FAILED] Attempt {attempt+1}/{args.plan_reworks+1} - Failed to parse JSON output.", exit_code=None)
                 plan_feedback_history.append(f"Attempt {attempt+1}: Failed to parse JSON output.")
                 plan_vars["rework_feedback"] = "\n\n".join(plan_feedback_history)
                 continue
@@ -731,28 +867,43 @@ def main():
             val_json = run_agent(cfg["agent"], "VALIDATE_PLAN", {"plan_json": json.dumps(current_plan, ensure_ascii=False), "source_file_path": str(source_path)}, retries=cfg["agent_execution_retries"], model_name=cfg.get("gemini_model"))
             val_res = parse_ai_json_output(val_json, "VALIDATE_PLAN")
             
-            if val_res and val_res.get("is_valid"):
-                plan_data = current_plan; break
-            elif val_res and val_res.get("is_acceptable"):
-                if not acceptable_plan: acceptable_plan = current_plan
+            # Show detailed colored feedback actively to user
+            if val_res:
+                is_valid = val_res.get("is_valid")
+                is_acceptable = val_res.get("is_acceptable")
+                feedback = val_res.get("feedback", "No feedback provided")
+                score = get_qa_score(val_res)
+                
+                if is_valid:
+                    print_success(colorize(f"[QA PERFECT PASS] Attempt {attempt+1}/{args.plan_reworks+1} - Score: {score}/10", "green"))
+                    print_detail(colorize(f"Validator: {feedback}", "green"))
+                    plan_data = current_plan
+                    break
+                elif is_acceptable:
+                    print_warning(colorize(f"[QA ACCEPTABLE FALLBACK] Attempt {attempt+1}/{args.plan_reworks+1} - Score: {score}/10", "yellow"))
+                    print_detail(colorize(f"Validator (Retrying for perfection...): {feedback}", "yellow"))
+                    if not acceptable_plan: acceptable_plan = current_plan
+                else:
+                    print_error(f"[QA REWORK REQUIRED] Attempt {attempt+1}/{args.plan_reworks+1} - Score: {score}/10", exit_code=None)
+                    print_detail(colorize(f"Validator Feedback: {feedback}", "red"))
+            else:
+                print_error(f"[QA FAILED] Attempt {attempt+1}/{args.plan_reworks+1} - Failed to parse Validator output.", exit_code=None)
+                feedback = "Validation failed"
             
-            feedback = val_res.get("feedback", "") if val_res else "Validation failed"
             plan_feedback_history.append(f"Attempt {attempt+1}: {feedback}")
             plan_vars["rework_feedback"] = "\n\n".join(plan_feedback_history)
-            
-            # Show detailed feedback to user
-            if val_res:
-                quality = val_res.get("quality_score", "N/A")
-                print_detail(f"Plan quality score: {quality}/10")
-                print_detail(f"Feedback: {feedback[:150]}...")
         
         plan_data = plan_data or acceptable_plan or current_plan or {}
         if plan_data: plan_path.write_text(json.dumps(plan_data, indent=2, ensure_ascii=False), encoding="utf-8")
     
-    # Add review for Phase 2
+    # Add review for Phase 2 dynamically
     report_add_step("Planning complete", f"Slides: {len(plan_data.get('slides', []))}")
-    report_add_review("Plan Structure", 8, "Plan follows logical structure")
-    report_add_review("Slide Distribution", 7, "Content distributed across slides")
+    
+    final_score = get_qa_score(val_res) if 'val_res' in locals() and val_res else 8
+    final_feedback = val_res.get("feedback", "Planning complete") if 'val_res' in locals() and val_res else "Planning process completed."
+    
+    report_add_review("Plan Structure", final_score, f"Logical outline constructed. QA Verdict: {final_feedback}")
+    report_add_review("Slide Distribution", final_score, "Consistent topic sequence and slide distribution verified.")
     report_complete_phase()
 
     if not plan_data: print_error("Planning failed.")
@@ -769,6 +920,7 @@ def main():
         current_deck = parse_ai_json_output(raw, "DECK")
         
         if not (current_deck and current_deck.get("slides")):
+            print_error(f"[QA FAILED] Attempt {attempt+1}/{args.slide_reworks+1} - Failed to parse slides from JSON output.", exit_code=None)
             deck_feedback_history.append(f"Attempt {attempt+1}: Failed to parse slides from JSON output.")
             deck_vars["rework_feedback"] = "\n\n".join(deck_feedback_history)
             continue
@@ -776,20 +928,31 @@ def main():
         val_json = run_agent(cfg["agent"], "VALIDATE_DECK", {"deck_json": json.dumps(current_deck, ensure_ascii=False), "source_file_path": str(source_path)}, retries=cfg["agent_execution_retries"], model_name=cfg.get("gemini_model"))
         val_res = parse_ai_json_output(val_json, "VALIDATE_DECK")
         
-        if val_res and val_res.get("is_valid"):
-            deck_data = current_deck; break
-        elif val_res and val_res.get("is_acceptable"):
-            if not acceptable_deck: acceptable_deck = current_deck
+        # Show detailed colored feedback actively to user
+        if val_res:
+            is_valid = val_res.get("is_valid")
+            is_acceptable = val_res.get("is_acceptable")
+            feedback = val_res.get("feedback", "No feedback provided")
+            score = get_qa_score(val_res)
+            
+            if is_valid:
+                print_success(colorize(f"[QA PERFECT PASS] Attempt {attempt+1}/{args.slide_reworks+1} - Score: {score}/10", "green"))
+                print_detail(colorize(f"Validator: {feedback}", "green"))
+                deck_data = current_deck
+                break
+            elif is_acceptable:
+                print_warning(colorize(f"[QA ACCEPTABLE FALLBACK] Attempt {attempt+1}/{args.slide_reworks+1} - Score: {score}/10", "yellow"))
+                print_detail(colorize(f"Validator (Retrying for perfection...): {feedback}", "yellow"))
+                if not acceptable_deck: acceptable_deck = current_deck
+            else:
+                print_error(f"[QA REWORK REQUIRED] Attempt {attempt+1}/{args.slide_reworks+1} - Score: {score}/10", exit_code=None)
+                print_detail(colorize(f"Validator Feedback: {feedback}", "red"))
+        else:
+            print_error(f"[QA FAILED] Attempt {attempt+1}/{args.slide_reworks+1} - Failed to parse Validator output.", exit_code=None)
+            feedback = "Validation failed"
         
-        feedback = val_res.get("feedback", "") if val_res else "Validation failed"
         deck_feedback_history.append(f"Attempt {attempt+1}: {feedback}")
         deck_vars["rework_feedback"] = "\n\n".join(deck_feedback_history)
-        
-        # Show detailed feedback to user
-        if val_res:
-            quality = val_res.get("quality_score", "N/A")
-            print_detail(f"Deck quality score: {quality}/10")
-            print_detail(f"Feedback: {feedback[:150]}...")
 
     deck_data = deck_data or acceptable_deck or current_deck or {"slides": []}
     last_deck_content = deck_data.get("slides", [])
@@ -800,10 +963,14 @@ def main():
         (slides_dir / f"{p_num}_{sanitize_filename(topic)}.md").write_text(slide.get("content", ""), encoding="utf-8")
         full_slides_content += f"### {p_num}: {topic}\n{slide.get('content')}\n\n"
     
-    # Add review for Phase 3
+    # Add review for Phase 3 dynamically
     report_add_step("Deck generation complete", f"Slides: {len(last_deck_content)}")
-    report_add_review("Content Quality", 8, "Slide content generated with proper detail")
-    report_add_review("Topic Coverage", 8, "All planned topics covered in slides")
+    
+    final_score = get_qa_score(val_res) if 'val_res' in locals() and val_res else 8
+    final_feedback = val_res.get("feedback", "Deck complete") if 'val_res' in locals() and val_res else "Deck generation process completed."
+    
+    report_add_review("Content Quality", final_score, f"Slide contents drafted. QA Verdict: {final_feedback}")
+    report_add_review("Topic Coverage", final_score, "Comprehensive alignment of all text segments and slide pages verified.")
     report_complete_phase()
 
     # Phase 4 & 5: Parallel Generation

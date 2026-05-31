@@ -19,7 +19,7 @@ try:
 except ImportError:
     JINJA_AVAILABLE = False
 
-def render_html(pages, templates_dir, project_info):
+def render_html(pages, templates_dir, project_info, review_report=None):
     if not JINJA_AVAILABLE:
         print("[Warning] Jinja2 not found. Using basic HTML rendering.", flush=True)
         html = f"<html><head><title>{project_info.get('title', 'Guide')}</title></head><body>"
@@ -34,7 +34,7 @@ def render_html(pages, templates_dir, project_info):
 
     env = Environment(loader=FileSystemLoader(templates_dir, encoding='utf-8'))
     template = env.get_template("guide.html.j2")
-    return template.render(pages=pages, project_info=project_info)
+    return template.render(pages=pages, project_info=project_info, review_report=review_report)
 
 def render_markdown(pages, project_info):
     md = f"# {project_info.get('title', 'Guide')}\n\n"
@@ -120,10 +120,20 @@ def main():
             author_text = f"By {authors}" if authors and authors != 'N/A' else ""
             project_info["author_info_text"] = author_text
 
+        # --- Review Report ---
+        review_report = None
+        review_json_path = output_dir / "review_report.json"
+        if review_json_path.exists():
+            import json
+            try:
+                review_report = json.loads(review_json_path.read_text(encoding="utf-8"))
+            except Exception as e:
+                print(f"[Warning] Failed to load review report: {e}", flush=True)
+
         if not slides_dir.exists():
             print(f"Build skipped: '{slides_dir.name}' directory not found in {output_dir}.", flush=True)
             if overview_path.exists():
-                html_content = render_html([], templates_dir, project_info)
+                html_content = render_html([], templates_dir, project_info, review_report=review_report)
                 output_path_html.write_text(html_content, encoding="utf-8")
                 md_content = render_markdown([], project_info)
                 output_path_md.write_text(md_content, encoding="utf-8")
@@ -193,7 +203,7 @@ def main():
             return
 
         # Render HTML
-        html_content = render_html(pages, templates_dir, project_info)
+        html_content = render_html(pages, templates_dir, project_info, review_report=review_report)
         output_path_html.write_text(html_content, encoding="utf-8")
         
         # Render Markdown
