@@ -37,6 +37,13 @@ output/
 # Runtime
 .runtime_config.json
 .pause_lock
+video_env_check.json
+
+# Coding Agents & Audit Tasks
+.pi/
+.antigravitycli/
+audit/
+temp_test_prompt.txt
 
 # Research (external repos cloned for evaluation only — root-anchored)
 /research/

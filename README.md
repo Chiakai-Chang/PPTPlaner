@@ -86,6 +86,98 @@ python scripts/combine_slides.py output/你的簡報資料夾
 
 ---
 
+## 🏗️ 處理管線與核心架報 (Pipeline & Micro Agentic Loop)
+
+### 1. 五階段處理管線 (Macro: The Knowledge Pipeline)
+系統將非結構化的原始文獻，透過五個階段的轉換，最終煉成結構化的知識資產。
+
+```mermaid
+graph LR
+    subgraph Input ["輸入層"]
+        Source["📄 原始文獻"]
+    end
+
+    subgraph Pipeline ["AI 處理管線"]
+        direction TB
+        Phase1("🔍 Phase 1: Analysis<br>分析與元數據提取")
+        Phase2("🗺️ Phase 2: Planning<br>教學架構規劃")
+        Phase3("🎞️ Phase 3: Deck Gen<br>投影片內容生成")
+        Phase4("📝 Phase 4: Memo Gen<br>逐字稿撰寫")
+        Phase5("🎨 Phase 5: SVG Gen<br>視覺素材生成")
+        
+        Phase1 --> Phase2 --> Phase3 --> Phase4 --> Phase5
+    end
+
+    subgraph Output ["輸出層"]
+        Result1["📊 結構化投影片 .md"]
+        Result2["🎙️ 講者逐字稿 .md"]
+        Result3["🖼️ 動畫圖表 .svg"]
+        Result4["🌐 整合網頁 .html"]
+    end
+
+    Source --> Phase1
+    Phase5 --> Result1 & Result2 & Result3 & Result4
+```
+
+### 2. 微觀協作模式 (Micro: The Agentic Loop)
+為了確保產出品質，我們不依賴單次 Prompt (Zero-shot)，而是為每個關鍵步驟設計了 **"Generator-Validator-Refiner"** 的自我修正迴圈。
+
+*   **Orchestrator (指揮官)**：負責狀態管理、錯誤處理與流程控制。
+*   **Generator (生成者)**：專注於創造力與內容生成的 Agent。
+*   **Validator (品管者)**：專注於邏輯檢查、事實查核與格式驗證的 Agent。
+
+```mermaid
+sequenceDiagram
+    participant O as 🤖 Orchestrator
+    participant G as ⚡ Generator Agent
+    participant V as 🔍 Validator Agent
+
+    Note over O, V: 單一任務執行週期 (e.g., 生成第 N 頁講稿)
+    
+    loop 自我修正迴圈 (Retry Loop)
+        O->>G: 1. 發送任務指令 + 上下文
+        G-->>O: 返回初稿 (Draft)
+        
+        O->>V: 2. 傳送初稿 + 驗收標準
+        V-->>O: 返回評估結果 (Pass/Fail) + 修改建議
+        
+        alt 驗證通過 (Perfect/Acceptable)
+            O->>O: 💾 儲存成果
+            Note right of O: 跳出迴圈，進入下一任務
+        else 驗證失敗 (Valid: False)
+            O->>O: 📝 累積錯誤日誌 (Feedback History)
+            Note right of O: 將「修改建議」加入下一次的 Prompt
+        end
+    end
+```
+
+---
+
+## 🛡️ 核心技術亮點 (Technical Highlights)
+
+*   **🛡️ 容錯式編排 (Fault-Tolerant Orchestration)**：
+    *   實作了 **State Persistence (狀態持久化)**，即使 API 連線中斷或配額耗盡，系統能自動暫停並保存進度，隨時恢復執行 (Resume)。
+*   **🧠 語境注入 (Context Injection)**：
+    *   在生成下游內容（如 SVG 圖表）時，系統會自動注入上游的上下文（如投影片大綱、講稿內容），確保視覺圖表與演講內容高度一致。
+*   **🔄 累積式反饋 (Cumulative Feedback)**：
+    *   在重試迴圈中，系統會維護一份 `feedback_history`，讓 AI 不僅知道「這次錯了」，還知道「過去犯過哪些錯」，避免在修正過程中反覆踏入相同的誤區。
+*   **👁️ 透明化品管 (Transparent QA & Audit Logs)**：
+    *   系統會在 CLI 介面即時顯示每個階段的驗證結果與重試理由（例如：「內容遺漏」、「格式錯誤」）。
+    *   同時，所有的 AI 推理過程（包含原始 Prompt、Raw Response、驗證回饋）都會完整記錄於 `logs/` 資料夾的日誌檔中，提供完整的 **可追溯性 (Traceability)**，讓您隨時可以「查帳」AI 的思考邏輯。
+
+---
+
+## 📊 如何解讀日誌 (How to Read Logs)
+
+當您查看 `logs/` 資料夾中的日誌時，您會看到 AI 與品管系統的互動紀錄：
+
+*   **`✓ ... validation passed (Perfect).`**：表示產出完美符合所有標準，一次過關。
+*   **`✓ ... validation passed (Acceptable). Striving for perfection...`**：表示產出雖然可用（如：字數稍多），但 AI 認為還可以更好。系統已暫存此版本，並**主動重試**以追求完美。
+*   **`[QA Feedback]: ...`**：這是品管 Agent 發現的具體問題（如：缺少關鍵引文、格式錯誤）。系統會將此回饋傳遞給生成 Agent 進行修正。
+*   **`Max retries reached... Using best acceptable result.`**：表示經過多次嘗試仍未達到完美，系統為了不中斷流程，智慧地退回使用之前最好的「可接受」版本。
+
+---
+
 ## 📚 文件導航
 
 | 需求 | 文件 | 連結 |
@@ -97,28 +189,26 @@ python scripts/combine_slides.py output/你的簡報資料夾
 
 ---
 
-## 🎯 系統架構
+## 📂 核心檔案清單 (Core Project Files)
+
+若您想分享此專案，以下是確保程式運作所需的最精簡檔案列表：
 
 ```
-                     ┌─────────────────────┐
-                     │   PPTPlaner 啟動器   │
-                     │  (bat / sh 智慧偵測) │
-                     └──────────┬──────────┘
-                                │
-           ┌────────────────────┼────────────────────┐
-           │                    │                    │
-           ▼                    ▼                    ▼
- ┌─────────────────────┐    ┌─────────────────────┐    ┌─────────────────────┐
- │     run_ui.py       │    │   orchestrate.py    │    │  video_pipeline.py  │
- │   (圖形操作介面)     │    │   (簡報/講稿生成)    │    │   (影片合成管線)     │
- └─────────────────────┘    └─────────────────────┘    └─────────────────────┘
-           │                         │                         │
-           ▼                         ▼                         ▼
- ┌─────────────────────┐    ┌─────────────────────┐    ┌─────────────────────┐
- │   output/slides/    │    │   output/notes/     │    │  output/video/      │
- │   (投影片 Markdown)  │    │   (備忘/講稿Markdown)│    │  (video_final.mp4)  │
- └─────────────────────┘    └─────────────────────┘    └─────────────────────┘
+PPTPlaner/
+├─ PPTPlaner.bat          # ⭐ Windows 一鍵啟動入口 (虛擬環境自動偵測)
+├─ PPTPlaner.sh           # ⭐ macOS/Linux 一鍵啟動入口 (虛擬環境自動偵測)
+├─ config.yaml            # 專案基礎設定
+├─ requirements.txt       # Python 套件依賴列表
+├─ run_ui.py              # 圖形介面主程式
+├─ templates/
+│  └─ guide.html.j2       # HTML 產生模板
+└─ scripts/
+   ├─ orchestrate.py      # 核心主控腳本
+   └─ build_guide.py      # HTML 產生腳本
 ```
+
+**您需要提供的：**
+*   您自己的原文書或簡報檔案，通常會放在 `source/` 資料夾中 (例如 `source/Chapter5.md`)。
 
 ---
 
@@ -129,10 +219,38 @@ python scripts/combine_slides.py output/你的簡報資料夾
 ```bash
 # 執行完整測試套件
 pytest
-
-# 結果
-======================= 153 passed, 3 skipped in 56.54s =======================
 ```
+
+Output:
+```text
+================== 153 passed, 3 skipped in 67.24s (0:01:07) ==================
+```
+
+---
+
+## 💡 專案初衷與開發哲學 (The "Why" Behind PPTPlaner)
+
+> **「程式碼不僅是邏輯的堆疊，更是我們對抗資訊焦慮、守護時間的武器。」**
+> *Code is not just logic; it is our weapon against the anxiety of time.*
+
+### 1. 緣起：在案件與文獻的夾縫中求生
+身處 2025 年的科技偵查、資料分析、AI 研究與開源情資（OSINT）第一線，我們最稀缺的資源永遠是 **「時間」** 。面對日新月異的 ArXiv 論文、突發的技術報告，以及海量的白皮書，我們常陷入「讀與不讀」的兩難。
+
+**PPTPlaner** 誕生於這種生存壓力之下。我們不希望技術學習成為負擔，它應該是**自動、高效且結構化**的。
+
+### 2. 開發哲學：不完美的橋樑，通往完美的知識
+我們必須誠實且謙卑地說明：**我們不生產知識，我們致力於成為原著與讀者之間的「橋樑」。**
+
+*   **推崇原著**：PPTPlaner 的產出絕非原著的替代品。我們希望幫助您用 10 分鐘判斷這篇文獻是否值得您花 3 小時深讀。**回到原著，才是獲取真實價值的途徑。**
+*   **引用倫理 (Citation Ethics)**：本工具的 Prompt 已被精心設計為「知識導讀者」而非「創作者」。生成的內容會盡力保持客觀並標註來源，但作為使用者，**您有責任確認最終產出的引用是否準確**，並尊重原作者的智慧財產權。
+*   **擁抱進化**：這是一個開源專案。如果您覺得生成的內容有瑕疵，感謝您幫我們找出了盲點；如果您有更好的 Prompt 或架構建議，**歡迎發起 Issue 或 PR**。
+
+### 3. 願景：保持尖端戰力的浪漫
+正如作者在 DeepRead AI 頻道創立時所言：
+
+> 「希望這個小作品，能在大家忙碌的工作裡，放進一點輕鬆、也放進一點**『保持尖端戰力』的浪漫**。」
+
+無論您是執法夥伴、資安專家還是開發者，歡迎 Fork 這個專案，打造屬於您的知識萃取流水線。讓我們不用再孤軍奮戰，用最省力的方式，一起變強。
 
 ---
 
@@ -149,9 +267,15 @@ pytest
 
 ---
 
-## 📜 授權
+## 📜 授權與作者 (License & Credits)
 
-本專案使用 [MIT License](LICENSE) 授權。
+*   **License**: MIT License. 可自由使用於非商業的教學與研究用途。
+*   **Original Creator**: Chiakai Chang
+*   **Contact**:
+    *   **Email**: [lotifv@gmail.com](mailto:lotifv@gmail.com)
+    *   **LinkedIn**: [chiakai-chang-htciu](https://www.linkedin.com/in/chiakai-chang-htciu)
+    *   **GitHub**: [Chiakai-Chang](https://github.com/Chiakai-Chang)
+*   **Inspiration**: Inspired by the need to prepare for the *Eyewitness Memory* chapter in a Forensic Psychology course at Central Police University.
 
 ---
 
