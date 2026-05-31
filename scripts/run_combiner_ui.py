@@ -14,8 +14,10 @@ else:
 
 SCRIPTS_DIR = ROOT / "scripts"
 COMBINER_SCRIPT_PATH = SCRIPTS_DIR / "combine_slides.py"
-# Prefer the venv python, but fall back to system python if not found
-VENV_PYTHON_EXE = ROOT / ".venv" / "Scripts" / "python.exe"
+if sys.platform == "win32":
+    VENV_PYTHON_EXE = ROOT / ".venv" / "Scripts" / "python.exe"
+else:
+    VENV_PYTHON_EXE = ROOT / ".venv" / "bin" / "python"
 PYTHON_EXE = str(VENV_PYTHON_EXE) if VENV_PYTHON_EXE.exists() else "python"
 
 # --- Main Application Class ---
@@ -119,16 +121,16 @@ class App(tk.Tk):
             ]
 
             # For Windows, hide the console window that subprocess might create
-            creation_flags = subprocess.CREATE_NO_WINDOW if sys.platform == "win32" else 0
+            popen_kwargs = {
+                "stdout": subprocess.PIPE,
+                "stderr": subprocess.STDOUT,
+                "text": True,
+                "encoding": "utf-8",
+            }
+            if sys.platform == "win32":
+                popen_kwargs["creationflags"] = subprocess.CREATE_NO_WINDOW
 
-            process = subprocess.Popen(
-                command,
-                stdout=subprocess.PIPE,
-                stderr=subprocess.STDOUT,
-                text=True,
-                encoding="utf-8",
-                creationflags=creation_flags
-            )
+            process = subprocess.Popen(command, **popen_kwargs)
 
             # Read and log output line by line in real-time
             for line in iter(process.stdout.readline, ''):

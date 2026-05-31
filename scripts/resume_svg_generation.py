@@ -58,7 +58,7 @@ def run_agent(agent: str, mode: str, vars_map: dict, retries: int = 3, delay: in
 
     prompt_parts = [safety_preamble, f"Your specific task is '{mode}'.", "--- INSTRUCTIONS ---", instructions, "--- CONTEXT & INPUTS ---"]
     for key, value in vars_map.items():
-        if key.endswith("_path") and value and os.path.exists(value):
+        if key.endswith("_path") and value and isinstance(value, (str, Path)) and os.path.exists(value):
             prompt_parts.append(f"Content for '{os.path.basename(value)}':\n```\n{Path(value).read_text(encoding='utf-8')}\n```")
         elif key.endswith("_content") and value: prompt_parts.append(f"Provided Content for '{key}':\n```\n{value}\n```")
         else: prompt_parts.append(f"- {key}: {value}")

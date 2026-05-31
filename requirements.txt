@@ -3,7 +3,9 @@ pyyaml>=6.0.2
 jinja2>=3.1.5
 markdown-it-py>=3.0.0
 requests>=2.31.0
-pywinpty>=3.0.0  # Required for antigravity CLI TTY support
+pillow>=10.0.0
+edge-tts>=6.1.12
+pywinpty>=3.0.0; sys_platform == 'win32'  # Required on Windows for antigravity CLI TTY support
 
 # Development dependencies (optional)
 # pytest>=7.0.0

@@ -5,10 +5,10 @@ from pathlib import Path
 
 try:
     import edge_tts
-except ImportError as e:
-    raise ImportError(
-        "edge-tts not installed. Run: pip install edge-tts"
-    ) from e
+    HAS_EDGE_TTS = True
+except ImportError:
+    edge_tts = None
+    HAS_EDGE_TTS = False
 
 from video.providers.base import TtsProvider, TtsProviderError
 
@@ -21,6 +21,10 @@ class EdgeTtsProvider(TtsProvider):
         voice: str = "zh-TW-HsiaoChenNeural",
         speed: str = "+0%",
     ) -> None:
+        if not HAS_EDGE_TTS:
+            raise ImportError(
+                "edge-tts not installed. Run: pip install edge-tts"
+            )
         self.voice = voice
         self.speed = speed
 

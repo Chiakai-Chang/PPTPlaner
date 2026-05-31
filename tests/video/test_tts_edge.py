@@ -3,6 +3,7 @@ from pathlib import Path
 from unittest.mock import patch, MagicMock
 
 import pytest
+pytest.importorskip("edge_tts")
 
 from video.providers.base import TtsProvider, TtsProviderError
 

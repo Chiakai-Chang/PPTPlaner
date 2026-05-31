@@ -87,8 +87,8 @@ def check_python():
     """Check Python version."""
     ver = f"{sys.version_info.major}.{sys.version_info.minor}"
     print(f"  Python: {ver} ({sys.executable})")
-    if sys.version_info < (3, 8):
-        error("Python 3.8+ required. Please upgrade.")
+    if sys.version_info < (3, 12):
+        error("Python 3.12+ required. Please upgrade.")
         return False
     success("Python version OK")
     return True

@@ -9,13 +9,14 @@ ROOT = Path(__file__).resolve().parents[1]
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
-# Ensure UTF-8 output on Windows
-if sys.platform == 'win32':
-    try:
+# Ensure UTF-8 output on all platforms supporting it
+try:
+    if hasattr(sys.stdout, 'reconfigure'):
         sys.stdout.reconfigure(encoding='utf-8')
+    if hasattr(sys.stderr, 'reconfigure'):
         sys.stderr.reconfigure(encoding='utf-8')
-    except:
-        pass # Fallback for older python
+except (ValueError, AttributeError, OSError):
+    pass # Fallback for environments that do not support reconfiguration
 
 # --- Constants ---
 ROOT = Path(__file__).resolve().parents[1]
@@ -141,6 +142,15 @@ def print_error(msg: str, exit_code: int = 1):
     except Exception as e:
         print(f"  ✗ [ERROR] Failed to write to error.log: {e}", file=sys.stderr, flush=True)
     if exit_code is not None: sys.exit(exit_code)
+
+def open_platform(path):
+    """Open folder or file in the default platform application (cross-platform)."""
+    if sys.platform == "win32":
+        os.startfile(path)
+    elif sys.platform == "darwin":  # macOS
+        subprocess.run(["open", str(path)])
+    else:  # Linux
+        subprocess.run(["xdg-open", str(path)])
 
 def sanitize_filename(name: str) -> str:
     """Removes characters that are invalid in Windows filenames and replaces spaces."""
@@ -391,7 +401,7 @@ def run_agent(agent: str, mode: str, vars_map: dict, retries: int = 3, delay: in
         if key == "rework_feedback":
             log_inputs[key] = value
             continue
-        if key.endswith("_path") and value and os.path.exists(value):
+        if key.endswith("_path") and value and isinstance(value, (str, Path)) and os.path.exists(value):
             file_content = Path(value).read_text(encoding='utf-8')
             prompt_parts.append(f"Content for '{os.path.basename(value)}':\n```\n{file_content}\n```")
             log_inputs[key] = f"[File Content from {os.path.basename(value)}]"
@@ -843,7 +853,7 @@ def main():
         print_info("Or with custom output:")
         print_info(f"  python scripts/video_pipeline.py --output-dir {output_dir}")
 
-    os.startfile(output_dir)
+    open_platform(output_dir)
     print_header("Run Complete!")
 
 if __name__ == "__main__":

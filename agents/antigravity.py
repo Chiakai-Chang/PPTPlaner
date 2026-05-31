@@ -234,6 +234,77 @@ class AntigravityAdapter(AgentInterface):
         
         process.wait()
         return full_output
+
+    def _execute_with_unix_pty(self, cmd_string: str) -> str:
+        """Execute command using native pty on macOS/Linux for TTY support."""
+        import pty
+        import os
+        import sys
+        
+        print(f"  🔄 [Antigravity] Executing command in Unix PTY... (may take 1-10 minutes)", flush=True)
+        
+        master_fd, slave_fd = pty.openpty()
+        try:
+            process = subprocess.Popen(
+                cmd_string,
+                stdin=slave_fd,
+                stdout=slave_fd,
+                stderr=slave_fd,
+                shell=True,
+                close_fds=True,
+            )
+        finally:
+            # Safe to close in parent, child maintains open reference
+            os.close(slave_fd)
+            
+        full_output = b""
+        timeout = 600  # 10 minutes
+        elapsed = 0
+        last_progress = 0
+        
+        # Read from master end of the pseudo-terminal
+        while process.poll() is None and elapsed < timeout:
+            try:
+                # Use non-blocking read or check ready using select
+                import select
+                r, _, _ = select.select([master_fd], [], [], 0.1)
+                if master_fd in r:
+                    chunk = os.read(master_fd, 4096)
+                    if chunk:
+                        full_output += chunk
+                        # Show progress every 30 seconds
+                        if elapsed - last_progress > 30:
+                            minutes = int(elapsed // 60)
+                            seconds = int(elapsed % 60)
+                            print(f"  ⏳ [Antigravity] Processing... {minutes}m {seconds}s elapsed", flush=True)
+                            last_progress = elapsed
+            except OSError:
+                break
+            
+            time.sleep(0.1)
+            elapsed += 0.1
+            
+        # Read any remaining output after process exits
+        try:
+            import select
+            while select.select([master_fd], [], [], 0.0)[0]:
+                chunk = os.read(master_fd, 4096)
+                if not chunk:
+                    break
+                full_output += chunk
+        except OSError:
+            pass
+            
+        # Clean up process if still alive
+        if process.poll() is None:
+            print(f"  ⚠️ [Antigravity] Timeout after {int(elapsed)}s, killing process", flush=True)
+            process.kill()
+            process.wait()
+            
+        os.close(master_fd)
+        decoded = full_output.decode("utf-8", errors="replace")
+        print(f"  ✅ [Antigravity] Received {len(decoded)} chars", flush=True)
+        return decoded
     
     def execute(
         self,
@@ -267,8 +338,15 @@ class AntigravityAdapter(AgentInterface):
                     logger.debug(f"Prompt file: {temp_file} ({os.path.getsize(temp_file)} bytes)")
                 
                 # Execute using pywinpty (TTY required)
+                import sys
                 if self._use_pywinpty:
                     raw_output = self._execute_with_pywinpty(cmd_string)
+                elif sys.platform != "win32":
+                    try:
+                        raw_output = self._execute_with_unix_pty(cmd_string)
+                    except Exception as e:
+                        logger.warning(f"Unix PTY failed, falling back to subprocess: {e}")
+                        raw_output = self._execute_with_subprocess(cmd_string)
                 else:
                     raw_output = self._execute_with_subprocess(cmd_string)
                 
@@ -322,22 +400,27 @@ class AntigravityAdapter(AgentInterface):
         """Check if Antigravity CLI is available.
         
         Checks multiple locations:
-        1. Command in PATH (via 'where' command)
+        1. Command in PATH (via shutil.which)
         2. Direct file path
-        3. Common installation locations
+        3. Common installation locations (Windows & macOS/Linux)
         """
         import sys
+        import shutil
         cmd = self.command_override or self.COMMAND
         
         print(f"[Antigravity] Checking availability for command: '{cmd}'", file=sys.stderr, flush=True)
         print(f"[Antigravity] os.name: {os.name}", file=sys.stderr, flush=True)
         
-        # Check if command exists directly
+        # 1. Check if command exists directly or in PATH using shutil.which
+        if shutil.which(cmd):
+            print(f"[Antigravity] Command found via shutil.which", file=sys.stderr, flush=True)
+            return True
+            
         if os.path.exists(cmd):
             print(f"[Antigravity] Command found via os.path.exists", file=sys.stderr, flush=True)
             return True
         
-        # Try 'where' command on Windows
+        # 2. Try common installation locations on Windows
         if os.name == 'nt':
             print(f"[Antigravity] Running 'where {cmd}'...", file=sys.stderr, flush=True)
             try:
@@ -347,16 +430,12 @@ class AntigravityAdapter(AgentInterface):
                     timeout=5
                 )
                 print(f"[Antigravity] where returncode: {result.returncode}", file=sys.stderr, flush=True)
-                print(f"[Antigravity] where stdout: {result.stdout}", file=sys.stderr, flush=True)
-                print(f"[Antigravity] where stderr: {result.stderr}", file=sys.stderr, flush=True)
-                
                 if result.returncode == 0:
                     print(f"[Antigravity] Command found via 'where'", file=sys.stderr, flush=True)
                     return True
             except Exception as e:
                 print(f"[Antigravity] Exception in 'where' call: {e}", file=sys.stderr, flush=True)
             
-            # Try common installation locations on Windows
             local_appdata = os.environ.get('LOCALAPPDATA', '')
             if local_appdata:
                 agy_paths = [
@@ -367,6 +446,18 @@ class AntigravityAdapter(AgentInterface):
                     if os.path.exists(agy_path):
                         print(f"[Antigravity] Command found at: {agy_path}", file=sys.stderr, flush=True)
                         return True
+                        
+        # 3. Try common installation locations on macOS/Linux
+        else:
+            candidates = [
+                "/usr/local/bin/agy",
+                "/opt/homebrew/bin/agy",
+                os.path.expanduser("~/.local/bin/agy"),
+            ]
+            for candidate in candidates:
+                if os.path.exists(candidate):
+                    print(f"[Antigravity] Command found at: {candidate}", file=sys.stderr, flush=True)
+                    return True
         
         print(f"[Antigravity] Command NOT found", file=sys.stderr, flush=True)
         return False

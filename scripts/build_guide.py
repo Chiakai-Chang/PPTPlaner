@@ -204,9 +204,5 @@ def main():
         print(f"[ERROR] An unexpected error occurred in build_guide.py: {e}", file=sys.stderr, flush=True)
         sys.exit(1)
 
-    except Exception as e:
-        print(f"[ERROR] An unexpected error occurred in build_guide.py: {e}", file=sys.stderr, flush=True)
-        sys.exit(1)
-
 if __name__ == "__main__":
     main()

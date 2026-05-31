@@ -7,6 +7,12 @@ from pathlib import Path
 from unittest import mock
 import pytest
 
+try:
+    import edge_tts
+    HAS_EDGE_TTS = True
+except ImportError:
+    HAS_EDGE_TTS = False
+
 import yaml
 
 from video.pipeline import run_video_pipeline
@@ -120,6 +126,7 @@ class TestPhase2Integration:
 
         assert result is None
 
+    @pytest.mark.skipif(not HAS_EDGE_TTS, reason="edge-tts not installed")
     def test_provider_selection_edge_tts(self, sample_config):
         """Test that Edge-TTS provider is selected correctly."""
         from video.pipeline import _create_tts_provider
