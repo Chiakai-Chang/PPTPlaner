@@ -39,11 +39,17 @@ output/
 .pause_lock
 video_env_check.json
 
-# Coding Agents & Audit Tasks
+# Coding Agents, Testing & Development Artifacts
 .pi/
 .antigravitycli/
 audit/
+case/
+reference/
+tests/
+GEMINI.md
+pytest.ini
 temp_test_prompt.txt
+video_env_check.json
 
 # Research (external repos cloned for evaluation only — root-anchored)
 /research/
