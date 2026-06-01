@@ -39,15 +39,21 @@ def generate_bookend_clip(
     wav_path = output_mp4.parent / f"{output_mp4.stem}.wav"
     try:
         tts = EdgeTtsProvider(voice="zh-TW-HsiaoChenNeural")
-        tts.synthesize(text, wav_path)
+        tts.generate(text, wav_path)
     except Exception as e:
         raise BookendError(f"TTS failed for bookend: {e}") from e
 
     # Step 2: PIL image with title
     img_path = output_mp4.parent / f"{output_mp4.stem}.png"
     try:
-        img = NoneImageProvider(width=width, height=height)
-        img.render(text=title, output=img_path)
+        img = NoneImageProvider()
+        img.generate(
+            title=title,
+            bullets=[],
+            output_png=img_path,
+            width=width,
+            height=height,
+        )
     except Exception as e:
         raise BookendError(f"Image generation failed for bookend: {e}") from e
 

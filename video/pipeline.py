@@ -107,6 +107,9 @@ def run_video_pipeline(
         print_slide_start,
         print_skipped,
         print_summary,
+        print_step_start,
+        print_step,
+        print_eta,
     )
 
     actual_slides_dir = slides_dir or (project_root / "slides")
@@ -135,6 +138,7 @@ def run_video_pipeline(
     intro_path = clips_dir / "intro.mp4"
     if intro_cfg.get("enabled", True):
         from video.steps.step4_bookend import generate_bookend_clip
+        print_step_start("generating intro bookend clip")
         try:
             generate_bookend_clip(
                 text=intro_cfg.get("text", intro_cfg.get("channel_name", "")),
@@ -145,18 +149,23 @@ def run_video_pipeline(
                 height=intro_cfg.get("height", VIDEO_DEFAULT_HEIGHT),
             )
             cp.mark_bookend("intro", "ok")
-        except Exception:
+            print_step("generating intro bookend clip", "ok")
+        except Exception as e:
             intro_path = None
             cp.mark_bookend("intro", "failed")
+            print_step("generating intro bookend clip", "failed", str(e))
 
     # Process each slide
     from video.providers.base import ImageProviderError, TtsProviderError
+    import time
 
+    start_time = time.time()
+    done_count = 0
     slide_clips: list[Path] = []
     total = len(slide_contexts)
 
     for idx, ctx in enumerate(slide_contexts):
-        print_slide_start(idx + 1, total, ctx.slide_id)
+        print_slide_start(ctx.slide_id, idx + 1, total)
 
         # Check if all steps for this slide are done
         slide_done = all(
@@ -166,6 +175,7 @@ def run_video_pipeline(
         if slide_done:
             print_skipped(ctx.slide_id)
             slide_clips.append(ctx.clip_path)
+            done_count += 1
             continue
 
         try:
@@ -184,12 +194,16 @@ def run_video_pipeline(
         except Exception as e:
             cp.mark(ctx.slide_id, "clip", "failed", str(e))
             print(f"  ⚠ {ctx.slide_id} — error: {e}", flush=True)
+        finally:
+            done_count += 1
+            print_eta(time.time() - start_time, done_count, total)
 
     # Generate outro
     outro_cfg = video_cfg.get("outro", {})
     outro_path = clips_dir / "outro.mp4"
     if outro_cfg.get("enabled", True):
         from video.steps.step4_bookend import generate_bookend_clip
+        print_step_start("generating outro bookend clip")
         try:
             generate_bookend_clip(
                 text=outro_cfg.get("text", outro_cfg.get("cta_text", "")),
@@ -199,8 +213,10 @@ def run_video_pipeline(
                 width=outro_cfg.get("width", VIDEO_DEFAULT_WIDTH),
                 height=outro_cfg.get("height", VIDEO_DEFAULT_HEIGHT),
             )
-        except Exception:
+            print_step("generating outro bookend clip", "ok")
+        except Exception as e:
             outro_path = None
+            print_step("generating outro bookend clip", "failed", str(e))
 
     # Concat
     if not slide_clips:
@@ -240,6 +256,7 @@ def run_slide_steps(
 ) -> None:
     """Run all steps for a single slide."""
     from video.constants import VIDEO_DEFAULT_FPS
+    from video.progress import print_step_start, print_step
 
     tts_cfg = config.get("video", {}).get("tts", {})
     image_cfg = config.get("video", {}).get("image", {})
@@ -247,26 +264,44 @@ def run_slide_steps(
     # Step 1: TTS
     tts_provider = _create_tts_provider(tts_cfg)
     wav_path = clips_dir / f"{ctx.slide_id}.wav"
-    tts_provider.generate(ctx.notes_path.read_text(), wav_path)
+    print_step_start("generating speech (TTS)")
+    try:
+        tts_provider.generate(ctx.notes_path.read_text(), wav_path)
+        print_step("generating speech (TTS)", "ok")
+    except Exception as e:
+        print_step("generating speech (TTS)", "failed", str(e))
+        raise
 
     # Step 2: Image
     img_provider = _create_image_provider(image_cfg)
     img_path = clips_dir / f"{ctx.slide_id}.png"
-    img_provider.generate(
-        title=ctx.content_path.read_text(),
-        bullets=[],
-        output_png=img_path,
-    )
+    print_step_start("generating visual frame (PIL)")
+    try:
+        img_provider.generate(
+            title=ctx.content_path.read_text(),
+            bullets=[],
+            output_png=img_path,
+        )
+        print_step("generating visual frame (PIL)", "ok")
+    except Exception as e:
+        print_step("generating visual frame (PIL)", "failed", str(e))
+        raise
 
     # Step 3: Clip
     from video.steps.step3_clip import compose_clip
 
-    compose_clip(
-        image_path=img_path,
-        wav_path=wav_path,
-        output_mp4=ctx.clip_path,
-        fps=VIDEO_DEFAULT_FPS,
-    )
+    print_step_start("rendering video clip (FFmpeg)")
+    try:
+        compose_clip(
+            image_path=img_path,
+            wav_path=wav_path,
+            output_mp4=ctx.clip_path,
+            fps=VIDEO_DEFAULT_FPS,
+        )
+        print_step("rendering video clip (FFmpeg)", "ok")
+    except Exception as e:
+        print_step("rendering video clip (FFmpeg)", "failed", str(e))
+        raise
 
 
 def _create_tts_provider(tts_cfg: dict) -> "TtsProvider":

@@ -4,17 +4,22 @@ from typing import TextIO
 
 
 def print_slide_start(slide_id: str, index: int, total: int) -> None:
-    """Print slide start line: [1/10] slide_01 —"""
-    print(f"[{index}/{total}] {slide_id} — ", end="", flush=True, file=sys.stdout)
+    """Print slide start line: [1/10] slide_01"""
+    print(f"[{index}/{total}] ➡️  Processing slide: {slide_id}", flush=True, file=sys.stdout)
+
+
+def print_step_start(step_name: str) -> None:
+    """Print step start line:   • generating tts..."""
+    print(f"  • {step_name}...", flush=True, file=sys.stdout)
 
 
 def print_step(step_name: str, status: str, error: str = "") -> None:
     """Print step result:  ✓ tts  or  ✗ image: timeout"""
     symbol = "✓" if status == "ok" else "✗"
     if status == "failed" and error:
-        print(f"  {symbol} {step_name}: {error}", flush=True, file=sys.stdout)
+        print(f"  {symbol} {step_name} failed: {error}", flush=True, file=sys.stdout)
     else:
-        print(f"  {symbol} {step_name}", flush=True, file=sys.stdout)
+        print(f"  {symbol} {step_name} completed", flush=True, file=sys.stdout)
 
 
 def print_skipped(slide_id: str) -> None:
