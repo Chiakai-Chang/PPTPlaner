@@ -50,7 +50,32 @@ class EdgeTtsProvider(TtsProvider):
                 voice=self.voice,
                 rate=self.speed,
             )
-            asyncio.run(communicate.save(str(output_wav)))
+            
+            async def _stream_audio_and_subs():
+                submaker = edge_tts.SubMaker()
+                has_word_boundaries = False
+                
+                with open(output_wav, "wb") as f:
+                    async for chunk in communicate.stream():
+                        if chunk["type"] == "audio":
+                            f.write(chunk["data"])
+                        elif chunk["type"] == "WordBoundary":
+                            has_word_boundaries = True
+                            submaker.create_sub(
+                                (chunk["start"], chunk["duration"]),
+                                chunk["text"],
+                            )
+                
+                if has_word_boundaries:
+                    srt_path = output_wav.with_suffix(".srt")
+                    srt_content = submaker.generate_subs()
+                    srt_path.write_text(srt_content, encoding="utf-8")
+
+            try:
+                asyncio.run(_stream_audio_and_subs())
+            except Exception:
+                # Fallback to standard save if streaming fails
+                asyncio.run(communicate.save(str(output_wav)))
         except Exception as e:
             raise TtsProviderError(
                 f"Edge-TTS generation failed: {e}"

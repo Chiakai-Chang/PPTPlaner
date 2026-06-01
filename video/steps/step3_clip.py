@@ -41,6 +41,21 @@ def compose_clip(
         "-loop", "1",
         "-i", str(image_path),
         "-i", str(wav_path),
+    ]
+
+    # If SRT exists, burn it as subtitles
+    srt_path = wav_path.with_suffix(".srt")
+    if srt_path.exists():
+        # Escape path for FFmpeg subtitles filter on Windows
+        clean_srt = str(srt_path).replace("\\", "/").replace(":", "\\:")
+        style = (
+            "FontName=Microsoft JhengHei,FontSize=28,"
+            "PrimaryColour=&H00FFFFFF,OutlineColour=&H80000000,"
+            "BorderStyle=3,Outline=2,Shadow=0,MarginV=50"
+        )
+        cmd.extend(["-vf", f"subtitles='{clean_srt}':force_style='{style}'"])
+
+    cmd.extend([
         "-c:v", "libx264",
         "-tune", "stillimage",
         "-c:a", "aac",
@@ -48,7 +63,7 @@ def compose_clip(
         "-shortest",
         "-y",
         str(output_mp4),
-    ]
+    ])
 
     try:
         subprocess.run(cmd, check=True, capture_output=True, timeout=300)

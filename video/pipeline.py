@@ -249,6 +249,37 @@ def run_video_pipeline(
     return final_path
 
 
+def extract_spoken_text(note_content: str) -> str:
+    """Extract only the actual speech from the rich note markdown file, removing headers and markers."""
+    import re
+    # Find everything between #### 【逐字講稿】 and either #### 【講者提示 & 轉場】 or a divider ---
+    pattern = r"####\s*【逐字講稿】(.*)(?:####\s*【講者提示 & 轉場】|---)"
+    match = re.search(pattern, note_content, re.DOTALL)
+    if match:
+        text = match.group(1).strip()
+    else:
+        # Fallback to cleaning up headings if structure is slightly different
+        text = note_content
+        # Remove metadata headers
+        text = re.sub(r"###.*?\n", "", text)
+        text = re.sub(r"####\s*【本頁重點摘要】.*?(?=####\s*【逐字講稿】)", "", text, flags=re.DOTALL)
+        text = re.sub(r"####\s*【逐字講稿】", "", text)
+        text = re.sub(r"####\s*【講者提示 & 轉場】.*", "", text, flags=re.DOTALL)
+        text = re.sub(r"---", "", text)
+    
+    # Strip markdown symbols like list dashes, bold markers, blockquotes
+    text = re.sub(r"^[-\*\+]\s+", "", text, flags=re.MULTILINE)  # bullet points
+    text = re.sub(r"^\s*>\s*", "", text, flags=re.MULTILINE)     # blockquotes
+    text = re.sub(r"#{1,6}\s+.*?\n", "", text)                  # internal subheadings (e.g. ##### ①)
+    text = re.sub(r"\*\*|\*", "", text)                         # bold and italics
+    text = re.sub(r"__|_", "", text)
+    text = re.sub(r"`", "", text)                               # inline code backticks
+    
+    # Clean up empty lines
+    cleaned_lines = [line.strip() for line in text.splitlines() if line.strip()]
+    return " ".join(cleaned_lines)
+
+
 def run_slide_steps(
     ctx: SlideContext,
     config: dict[str, Any],
@@ -266,7 +297,9 @@ def run_slide_steps(
     wav_path = clips_dir / f"{ctx.slide_id}.wav"
     print_step_start("generating speech (TTS)")
     try:
-        tts_provider.generate(ctx.notes_path.read_text(), wav_path)
+        raw_notes = ctx.notes_path.read_text(encoding="utf-8")
+        spoken_text = extract_spoken_text(raw_notes)
+        tts_provider.generate(spoken_text, wav_path)
         print_step("generating speech (TTS)", "ok")
     except Exception as e:
         print_step("generating speech (TTS)", "failed", str(e))
