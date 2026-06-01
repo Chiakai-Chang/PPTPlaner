@@ -104,6 +104,12 @@ def main():
 
     config = yaml.safe_load(config_path.read_text(encoding="utf-8"))
 
+    # Force enable video override in config dictionary if CLI argument is provided
+    if args.enable_video:
+        if "video" not in config or not isinstance(config["video"], dict):
+            config["video"] = {}
+        config["video"]["enabled"] = True
+
     # Check if video is enabled (unless --enable-video flag is used)
     if not args.enable_video and not config.get("video", {}).get("enabled", False):
         print("Video generation is disabled.")
@@ -170,6 +176,8 @@ def main():
             project_root=args.project_root,
             config=config,
             output_dir=args.output_dir,
+            slides_dir=slides_dir,
+            notes_dir=notes_dir,
         )
 
         if output:

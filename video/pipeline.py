@@ -69,6 +69,8 @@ def run_video_pipeline(
     project_root: Path,
     config: dict[str, Any],
     output_dir: Path | None = None,
+    slides_dir: Path | None = None,
+    notes_dir: Path | None = None,
 ) -> Path | None:
     """
     Main pipeline entry point.
@@ -107,14 +109,14 @@ def run_video_pipeline(
         print_summary,
     )
 
-    slides_dir = project_root / "slides"
-    notes_dir = project_root / "notes"
+    actual_slides_dir = slides_dir or (project_root / "slides")
+    actual_notes_dir = notes_dir or (project_root / "notes")
 
-    if not slides_dir.exists() or not notes_dir.exists():
+    if not actual_slides_dir.exists() or not actual_notes_dir.exists():
         return None
 
     # Discover slides
-    slide_contexts = _discover_slides(slides_dir, notes_dir)
+    slide_contexts = _discover_slides(actual_slides_dir, actual_notes_dir)
     if not slide_contexts:
         return None
 
