@@ -1,6 +1,6 @@
 """None Image Provider — PIL Text Overlay & Structured Slide Renderer.
 
-Generates gorgeous 1920x1080 PNG slides from raw Markdown files.
+Generates gorgeous 1920x1080 PNG slides or 1080x1920 vertical slides from raw Markdown files.
 Uses modern dark HSL gradient backgrounds, glowing glassmorphic cards,
 structured section layout, wrapped text, and high-quality Chinese system fonts.
 """
@@ -136,16 +136,22 @@ class NoneImageProvider(ImageProvider):
             main_title = parsed["main_title"] or "Presentation Slide"
             sections = parsed["sections"]
 
-            # Load fonts
-            title_font = self._get_font("bold", 54)
-            section_font = self._get_font("bold", 34)
-            body_font = self._get_font("regular", 26)
+            # Adapt dimensions & font sizes for vertical mode
+            is_vertical = height > width
+            if is_vertical:
+                title_font = self._get_font("bold", 40)
+                section_font = self._get_font("bold", 28)
+                body_font = self._get_font("regular", 22)
+            else:
+                title_font = self._get_font("bold", 54)
+                section_font = self._get_font("bold", 34)
+                body_font = self._get_font("regular", 26)
 
             # Draw Main Title (Upper Top Section)
             title_bbox = draw.textbbox((0, 0), main_title, font=title_font)
             title_w = title_bbox[2] - title_bbox[0]
             title_x = (width - title_w) // 2
-            title_y = 60
+            title_y = 60 if not is_vertical else 80
             
             # Subtle title drop shadow
             draw.text((title_x + 2, title_y + 2), main_title, fill=(5, 8, 15), font=title_font)
@@ -153,10 +159,10 @@ class NoneImageProvider(ImageProvider):
             draw.text((title_x, title_y), main_title, fill=self.text_color, font=title_font)
 
             # Beautiful gradient accent divider bar under title
-            bar_w = min(title_w + 120, width - 200)
+            bar_w = min(title_w + 120, width - 160)
             bar_h = 6
             bar_x = (width - bar_w) // 2
-            bar_y = title_y + 85
+            bar_y = title_y + 85 if not is_vertical else title_y + 70
             draw.rounded_rectangle(
                 [bar_x, bar_y, bar_x + bar_w, bar_y + bar_h],
                 radius=3,
@@ -166,7 +172,6 @@ class NoneImageProvider(ImageProvider):
             # Draw Structured Card Grid
             num_sections = len(sections)
             if num_sections == 0:
-                # Fallback if no sections exist
                 sections = [{"title": "", "bullets": ["No content available"]}]
                 num_sections = 1
 
@@ -175,29 +180,41 @@ class NoneImageProvider(ImageProvider):
             grid_h = height - grid_y - 80
             padding = 40
 
-            if num_sections == 1:
-                col_widths = [width - 200]
-                col_xs = [100]
-            elif num_sections == 2:
-                w_col = (width - 200 - padding) // 2
-                col_widths = [w_col, w_col]
-                col_xs = [100, 100 + w_col + padding]
+            if is_vertical:
+                # Stacking card rows vertically
+                card_h = (grid_h - (num_sections - 1) * padding) // num_sections
+                card_h = min(card_h, 450)  # Avoid massive cards if only 1 section exists
+                card_w = width - 160
+                col_xs = [80] * num_sections
+                col_widths = [card_w] * num_sections
+                row_ys = [grid_y + i * (card_h + padding) for i in range(num_sections)]
             else:
-                # 3 columns limit side-by-side, overflow goes down if large, but fit first 3
-                cols = min(num_sections, 3)
-                w_col = (width - 200 - (cols - 1) * padding) // cols
-                col_widths = [w_col] * cols
-                col_xs = [100 + i * (w_col + padding) for i in range(cols)]
+                # Arranging card columns horizontally
+                card_h = grid_h
+                row_ys = [grid_y] * num_sections
+                if num_sections == 1:
+                    col_widths = [width - 200]
+                    col_xs = [100]
+                elif num_sections == 2:
+                    w_col = (width - 200 - padding) // 2
+                    col_widths = [w_col, w_col]
+                    col_xs = [100, 100 + w_col + padding]
+                else:
+                    cols = min(num_sections, 3)
+                    w_col = (width - 200 - (cols - 1) * padding) // cols
+                    col_widths = [w_col] * cols
+                    col_xs = [100 + i * (w_col + padding) for i in range(cols)]
 
             # Draw each section inside a glassmorphic container card
-            for i, sec in enumerate(sections[:3]):  # Limit to 3 columns to avoid overlap
+            for i, sec in enumerate(sections[:3]):  # Limit to 3 cards to avoid overflow
                 col_w = col_widths[i]
                 col_x = col_xs[i]
+                current_y = row_ys[i]
+                current_h = card_h
 
-                card_box = [col_x, grid_y, col_x + col_w, grid_y + grid_h]
+                card_box = [col_x, current_y, col_x + col_w, current_y + current_h]
 
                 # Draw glowing container card background
-                # Rich dark card background with glowing border
                 draw.rounded_rectangle(
                     card_box,
                     radius=16,
@@ -208,34 +225,34 @@ class NoneImageProvider(ImageProvider):
 
                 # Draw Card Header (Section Title)
                 sec_title = sec["title"]
-                text_y = grid_y + 35
+                text_y = current_y + 30
                 
                 if sec_title:
                     # Draw a nice colored indicator bar on the left of section title
                     indicator_w = 6
-                    indicator_h = 30
+                    indicator_h = 28
                     draw.rounded_rectangle(
-                        [col_x + 30, text_y + 2, col_x + 30 + indicator_w, text_y + 2 + indicator_h],
+                        [col_x + 25, text_y + 2, col_x + 25 + indicator_w, text_y + 2 + indicator_h],
                         radius=2,
                         fill=self.accent_color,
                     )
                     
                     draw.text(
-                        (col_x + 48, text_y),
+                        (col_x + 42, text_y),
                         sec_title,
                         fill=self.text_color,
                         font=section_font,
                     )
-                    text_y += 65
+                    text_y += 55
                 else:
                     text_y += 10
 
                 # Draw Bullet Points inside the card
-                bullet_start_x = col_x + 35
+                bullet_start_x = col_x + 30
                 for bullet in sec["bullets"]:
                     # Draw custom bullet point icon (colored elegant dot)
-                    bullet_radius = 5
-                    bullet_center_y = text_y + 16
+                    bullet_radius = 4
+                    bullet_center_y = text_y + 14
                     draw.ellipse(
                         [
                             bullet_start_x,
@@ -247,20 +264,23 @@ class NoneImageProvider(ImageProvider):
                     )
 
                     # Wrap text to fit card column width safely
-                    max_text_w = col_w - 85
+                    max_text_w = col_w - 75
                     wrapped_lines = self._wrap_text(bullet, body_font, max_text_w, draw)
                     
                     for line in wrapped_lines:
+                        # Safety check: prevent drawing text outside card bottom boundary
+                        if text_y + 36 > current_y + current_h - 20:
+                            break
                         draw.text(
-                            (bullet_start_x + 25, text_y),
+                            (bullet_start_x + 22, text_y),
                             line,
                             fill=self.muted_color,
                             font=body_font,
                         )
-                        text_y += 42
+                        text_y += 36
                     
                     # Space between bullets
-                    text_y += 12
+                    text_y += 10
 
             output_png.parent.mkdir(parents=True, exist_ok=True)
             img.save(str(output_png), "PNG")
