@@ -44,12 +44,13 @@ class EdgeTtsProvider(TtsProvider):
         output_wav.parent.mkdir(parents=True, exist_ok=True)
 
         try:
+            import asyncio
             communicate = edge_tts.Communicate(
                 text,
                 voice=self.voice,
                 rate=self.speed,
             )
-            communicate.save(str(output_wav))
+            asyncio.run(communicate.save(str(output_wav)))
         except Exception as e:
             raise TtsProviderError(
                 f"Edge-TTS generation failed: {e}"
