@@ -1,0 +1,5 @@
+# Ignore all generated outputs in this directory
+*
+
+# Except the gitignore itself to preserve the folder structure
+!.gitignore

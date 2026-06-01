@@ -32,7 +32,8 @@ nul
 *.log
 error.log
 logs/
-output/
+output/*
+!output/.gitignore
 
 # Runtime
 .runtime_config.json
