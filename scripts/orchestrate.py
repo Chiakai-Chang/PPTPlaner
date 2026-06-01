@@ -586,7 +586,7 @@ def parse_ai_json_output(output: str, mode: str) -> dict | None:
 
 def get_config(args: argparse.Namespace) -> dict:
     cfg = yaml.safe_load(CONFIG_PATH.read_text(encoding="utf-8")) if CONFIG_PATH.exists() else {}
-    defaults = {'version': '3.9.0', 'plan_max_reworks': 3, 'slide_svg_max_reworks': 5, 'conceptual_svg_max_reworks': 5, 'agent_execution_retries': 3}
+    defaults = {'version': '4.0.0', 'plan_max_reworks': 3, 'slide_svg_max_reworks': 5, 'conceptual_svg_max_reworks': 5, 'agent_execution_retries': 3}
     for k, v in defaults.items():
         if k not in cfg: cfg[k] = v
     cfg.update({k: v for k, v in vars(args).items() if v is not None})
