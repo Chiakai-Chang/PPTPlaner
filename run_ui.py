@@ -350,6 +350,8 @@ class App(tk.Tk):
         
         self.after(100, self._start_background_detection)
         self.agent_type_var.trace_add("write", self._update_agent_status)
+        self.agent_type_var.trace_add("write", self._update_models_for_agent)
+        self.after(150, lambda: self._update_models_for_agent())
         
         # Model config frame
         self.model_config_frame = tk.Frame(self.card_agent, bg=self.COLOR_BG_CARD)
@@ -1059,6 +1061,12 @@ class App(tk.Tk):
     def run_orchestration(self):
         import subprocess
         import sys
+
+        # Update current model selection from the combobox variables
+        if self.mode_selection.get() == "new_generation":
+            self.current_gemini_model = self.initial_gemini_model_var.get()
+        else:
+            self.current_gemini_model = self.resume_gemini_model_var.get()
 
         if self.mode_selection.get() == "new_generation":
             if not self.source_file_path.get():
