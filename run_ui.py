@@ -178,9 +178,37 @@ class App(tk.Tk):
         self.right_pane = tk.Frame(main_frame, bg=self.COLOR_BG_WINDOW)
         self.right_pane.grid(row=0, column=1, sticky="nsew", padx=(10, 0))
 
+        # Sticky Run Button Frame at the bottom of the left pane
+        self.run_button_frame = tk.Frame(self.left_pane, bg=self.COLOR_BG_WINDOW)
+        self.run_button_frame.pack(side="bottom", fill="x", pady=(5, 5))
+        
+        self.run_button = self.create_button(self.run_button_frame, "🚀 開始簡報生成 (Start Generation)", self.run_orchestration, btn_type="primary")
+        self.run_button.pack(fill="x", padx=10, pady=5)
+
+        # Scrollable Canvas container for configuration inputs in the left pane
+        self.left_canvas_frame = tk.Frame(self.left_pane, bg=self.COLOR_BG_WINDOW)
+        self.left_canvas_frame.pack(side="top", fill="both", expand=True)
+        
+        self.left_canvas = tk.Canvas(self.left_canvas_frame, bg=self.COLOR_BG_WINDOW, bd=0, highlightthickness=0)
+        self.left_scrollbar = ttk.Scrollbar(self.left_canvas_frame, orient="vertical", command=self.left_canvas.yview)
+        self.left_canvas.configure(yscrollcommand=self.left_scrollbar.set)
+        
+        self.left_scrollbar.pack(side="right", fill="y")
+        self.left_canvas.pack(side="left", fill="both", expand=True)
+        
+        self.left_scroll_frame = tk.Frame(self.left_canvas, bg=self.COLOR_BG_WINDOW)
+        
+        def configure_left_canvas(e):
+            self.left_canvas.configure(scrollregion=self.left_canvas.bbox("all"))
+            self.left_canvas.itemconfig(left_canvas_window, width=e.width)
+            
+        left_canvas_window = self.left_canvas.create_window((0,0), window=self.left_scroll_frame, anchor="nw")
+        self.left_canvas.bind("<Configure>", configure_left_canvas)
+        self.left_scroll_frame.bind("<Configure>", lambda e: self.left_canvas.configure(scrollregion=self.left_canvas.bbox("all")))
+
         # --- Mode Selection ---
         self.mode_selection = tk.StringVar(value="new_generation")
-        mode_selection_frame = tk.Frame(self.left_pane, bg=self.COLOR_BG_WINDOW)
+        mode_selection_frame = tk.Frame(self.left_scroll_frame, bg=self.COLOR_BG_WINDOW)
         mode_selection_frame.pack(fill="x", pady=(5, 10))
         
         tk.Label(mode_selection_frame, text="⚙️ 選擇操作模式 (Select Mode):", font=self.FONT_TITLE, fg=self.COLOR_TEXT_PRIMARY, bg=self.COLOR_BG_WINDOW).pack(anchor="w", pady=(0, 6))
@@ -198,7 +226,7 @@ class App(tk.Tk):
             rb.pack(side="left", padx=(0, 15))
 
         # --- Resume Specific Inputs ---
-        self.resume_output_dir_frame = tk.Frame(self.left_pane, bg=self.COLOR_BG_CARD, highlightbackground=self.COLOR_BORDER, highlightthickness=1, bd=0)
+        self.resume_output_dir_frame = tk.Frame(self.left_scroll_frame, bg=self.COLOR_BG_CARD, highlightbackground=self.COLOR_BORDER, highlightthickness=1, bd=0)
         
         tk.Label(self.resume_output_dir_frame, text="🔁 接續簡報生成", font=self.FONT_TITLE, fg=self.COLOR_TEXT_PRIMARY, bg=self.COLOR_BG_CARD).pack(anchor="w", padx=15, pady=(15, 8))
         
@@ -233,7 +261,7 @@ class App(tk.Tk):
         self.resume_model_combobox.pack(side="left")
 
         # --- Embed Images Specific Inputs ---
-        self.embed_images_frame = tk.Frame(self.left_pane, bg=self.COLOR_BG_CARD, highlightbackground=self.COLOR_BORDER, highlightthickness=1, bd=0)
+        self.embed_images_frame = tk.Frame(self.left_scroll_frame, bg=self.COLOR_BG_CARD, highlightbackground=self.COLOR_BORDER, highlightthickness=1, bd=0)
         
         tk.Label(self.embed_images_frame, text="🖼️ 製作圖文簡報 (HTML)", font=self.FONT_TITLE, fg=self.COLOR_TEXT_PRIMARY, bg=self.COLOR_BG_CARD).pack(anchor="w", padx=15, pady=(15, 8))
         
@@ -281,7 +309,7 @@ class App(tk.Tk):
         self.image_canvas.bind("<MouseWheel>", self._on_mousewheel)
 
         # --- Video Generation Specific Inputs ---
-        self.video_generation_frame = tk.Frame(self.left_pane, bg=self.COLOR_BG_CARD, highlightbackground=self.COLOR_BORDER, highlightthickness=1, bd=0)
+        self.video_generation_frame = tk.Frame(self.left_scroll_frame, bg=self.COLOR_BG_CARD, highlightbackground=self.COLOR_BORDER, highlightthickness=1, bd=0)
         
         tk.Label(self.video_generation_frame, text="🎥 簡報語音影片生成", font=self.FONT_TITLE, fg=self.COLOR_TEXT_PRIMARY, bg=self.COLOR_BG_CARD).pack(anchor="w", padx=15, pady=(15, 8))
         
@@ -328,7 +356,7 @@ class App(tk.Tk):
         self.video_status_label.pack(side="left")
 
         # --- New Generation Specific Inputs ---
-        self.new_generation_controls_frame = tk.Frame(self.left_pane, bg=self.COLOR_BG_WINDOW)
+        self.new_generation_controls_frame = tk.Frame(self.left_scroll_frame, bg=self.COLOR_BG_WINDOW)
         
         # --- Card 1: AI Agent & Model Setup ---
         self.card_agent = tk.Frame(self.new_generation_controls_frame, bg=self.COLOR_BG_CARD, highlightbackground=self.COLOR_BORDER, highlightthickness=1, bd=0)
@@ -511,8 +539,7 @@ class App(tk.Tk):
 
         self.new_generation_controls_frame.grid_columnconfigure(0, weight=1)
 
-        # Common elements (will be packed in toggle_mode_inputs)
-        self.run_button = self.create_button(self.left_pane, "🚀 開始簡報生成 (Start Generation)", self.run_orchestration, btn_type="primary")
+        # Common elements packed in the right pane permanently
         self.progress_label = tk.Label(self.right_pane, text="📊 執行進度與詳細日誌 (Console Log):", font=self.FONT_TITLE, fg=self.COLOR_TEXT_PRIMARY, bg=self.COLOR_BG_WINDOW)
         
         # --- AI Auditor Dashboard Panel ---
@@ -567,6 +594,13 @@ class App(tk.Tk):
         self.console = scrolledtext.ScrolledText(self.right_pane, wrap=tk.WORD, state="disabled", bg="#0f172a", fg="#f8fafc",
                                                  font=self.FONT_CONSOLE, insertbackground="white", bd=0, highlightthickness=1, highlightbackground=self.COLOR_BORDER)
 
+        # Permanently pack console parts in right pane
+        self.progress_label.pack(pady=5, padx=10, anchor="w")
+        self.console.pack(pady=5, padx=10, fill="both", expand=True)
+
+        # Bind mousewheel recursive to left panel frame
+        self._bind_mousewheel_recursive(self.left_scroll_frame, self._on_left_mousewheel)
+
         # Initial toggle
         self.toggle_mode_inputs()
 
@@ -597,6 +631,16 @@ class App(tk.Tk):
 
     def _on_mousewheel(self, event):
         self.image_canvas.yview_scroll(int(-1*(event.delta/120)), "units")
+
+    def _on_left_mousewheel(self, event):
+        self.left_canvas.yview_scroll(int(-1*(event.delta/120)), "units")
+
+    def _bind_mousewheel_recursive(self, widget, callback):
+        if isinstance(widget, scrolledtext.ScrolledText):
+            return
+        widget.bind("<MouseWheel>", callback)
+        for child in widget.winfo_children():
+            self._bind_mousewheel_recursive(child, callback)
 
     def open_link(self, url: str):
         webbrowser.open(url)
@@ -726,6 +770,7 @@ class App(tk.Tk):
                 row_frame.grid_columnconfigure(2, weight=1)
                 
                 self.slide_image_map[slide_id] = img_var
+                self._bind_mousewheel_recursive(row_frame, self._on_mousewheel)
                 row_index += 1
 
             if row_index == 0:
