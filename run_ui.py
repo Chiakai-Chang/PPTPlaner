@@ -39,18 +39,72 @@ class App(tk.Tk):
         self.version = cfg.get("version", "Unknown") # Default to Unknown if not found
         
         self.title(f"PPTPlaner {self.version}")
-        # Set window size and position
+        
+        # --- Theme Config / Color System ---
+        self.COLOR_BG_WINDOW = "#f8fafc"      # Slate 50
+        self.COLOR_BG_CARD = "#ffffff"        # White
+        self.COLOR_BORDER = "#e2e8f0"         # Slate 200
+        self.COLOR_TEXT_PRIMARY = "#0f172a"   # Slate 900
+        self.COLOR_TEXT_MUTED = "#64748b"     # Slate 500
+        self.COLOR_ACCENT = "#2563eb"         # Blue 600
+        self.COLOR_ACCENT_HOVER = "#1d4ed8"  # Blue 700
+        self.COLOR_ACCENT_LIGHT = "#eff6ff"  # Blue 50
+        self.COLOR_SUCCESS = "#10b981"        # Green 500
+        self.COLOR_SUCCESS_LIGHT = "#ecfdf5" # Green 50
+        self.COLOR_DANGER = "#ef4444"         # Red 500
+        self.COLOR_DANGER_LIGHT = "#fef2f2"   # Red 50
+        self.COLOR_BORDER_FOCUS = "#3b82f6"   # Blue 500
+        
+        # Set Window background
+        self.configure(bg=self.COLOR_BG_WINDOW)
+        
+        # --- Fonts ---
+        self.FONT_TITLE = ("Microsoft JhengHei", 11, "bold")
+        self.FONT_SECTION = ("Microsoft JhengHei", 10, "bold")
+        self.FONT_BODY = ("Microsoft JhengHei", 10)
+        self.FONT_BODY_BOLD = ("Microsoft JhengHei", 10, "bold")
+        self.FONT_SMALL = ("Microsoft JhengHei", 9)
+        self.FONT_CONSOLE = ("Consolas", 10)
+        
+        # Set window size and position based on screen dimensions
+        screen_width = self.winfo_screenwidth()
         screen_height = self.winfo_screenheight()
-        window_height = int(screen_height * 0.8) # Increased height for the new list view
-        if window_height < 700: window_height = 700
+        
+        window_width = int(screen_width * 0.7)
+        if window_width < 1100: window_width = 1100
+        elif window_width > 1300: window_width = 1300
+        
+        window_height = int(screen_height * 0.75)
+        if window_height < 750: window_height = 750
         elif window_height > 900: window_height = 900
-        window_width = 800 # Increased width
-        center_x = int((self.winfo_screenwidth() / 2) - (window_width / 2))
+        
+        center_x = int((screen_width / 2) - (window_width / 2))
         center_y = int((screen_height / 2) - (window_height / 2))
         self.geometry(f'{window_width}x{window_height}+{center_x}+{center_y}')
 
+        # --- TTK Styles ---
+        style = ttk.Style()
+        style.theme_use('clam')
+        style.configure("TCombobox", 
+                        fieldbackground="#ffffff", 
+                        background="#e2e8f0", 
+                        foreground="#0f172a", 
+                        bordercolor="#e2e8f0", 
+                        lightcolor="#e2e8f0", 
+                        darkcolor="#e2e8f0",
+                        arrowcolor="#64748b")
+        style.map("TCombobox", 
+                  fieldbackground=[("readonly", "#ffffff"), ("active", "#f8fafc")],
+                  selectbackground=[("readonly", "#eff6ff"), ("active", "#eff6ff")],
+                  selectforeground=[("readonly", "#2563eb"), ("active", "#2563eb")])
+                  
+        style.configure("TScrollbar",
+                        background="#cbd5e1",
+                        bordercolor="#e2e8f0",
+                        troughcolor="#f8fafc",
+                        arrowcolor="#64748b")
+
         # --- Initialize instance variables ---
-        self.available_gemini_models = available_models
         self.source_file_path = tk.StringVar()
         self.slides_file_path = tk.StringVar()
         self.input_doc_title = tk.StringVar()
@@ -60,6 +114,8 @@ class App(tk.Tk):
         self.quota_event = threading.Event()
         self.quota_event.set()
         self.current_gemini_model = None
+        self.resume_output_dir_path = tk.StringVar()
+        self.video_output_dir_path = tk.StringVar()
         
         # Variables for Image Embedding Mode
         self.guide_html_path = tk.StringVar()
@@ -67,248 +123,476 @@ class App(tk.Tk):
         self.slide_rows_frame = None # Frame inside canvas
 
         # --- Layout Structure ---
-        footer_frame = tk.Frame(self, bg="#e0e0e0")
-        footer_frame.pack(fill="x", side="bottom", pady=5, padx=10)
-        main_frame = tk.Frame(self, padx=10, pady=10)
-        main_frame.pack(fill="both", expand=True, padx=10, pady=5)
+        # Footer separator line
+        footer_divider = tk.Frame(self, height=1, bg=self.COLOR_BORDER, bd=0)
+        footer_divider.pack(fill="x", side="bottom")
+        
+        footer_frame = tk.Frame(self, bg=self.COLOR_BG_WINDOW)
+        footer_frame.pack(fill="x", side="bottom", pady=10, padx=15)
+        
+        main_frame = tk.Frame(self, bg=self.COLOR_BG_WINDOW)
+        main_frame.pack(fill="both", expand=True, padx=15, pady=(15, 5))
 
         # --- Populate Footer ---
-        hyperlink_font = tkFont.Font(footer_frame, tkFont.nametofont("TkDefaultFont")); hyperlink_font.configure(underline=True)
-        info_line1 = tk.Frame(footer_frame, bg=footer_frame["bg"]); info_line1.pack(fill="x")
-        tk.Label(info_line1, text="Author: Chiakai Chang", bg=footer_frame["bg"]).pack(side="left", padx=(0,10))
-        gh_link = tk.Label(info_line1, text="GitHub", fg="blue", cursor="hand2", font=hyperlink_font, bg=footer_frame["bg"]); gh_link.pack(side="left", padx=5)
-        gh_link.bind("<Button-1>", lambda e: self.open_link("https://github.com/Chiakai-Chang/PPTPlaner"))
-        li_link = tk.Label(info_line1, text="LinkedIn", fg="blue", cursor="hand2", font=hyperlink_font, bg=footer_frame["bg"]); li_link.pack(side="left", padx=5)
-        li_link.bind("<Button-1>", lambda e: self.open_link("https://www.linkedin.com/in/chiakai-chang-htciu"))
-        mail_link = tk.Label(info_line1, text="Email", fg="blue", cursor="hand2", font=hyperlink_font, bg=footer_frame["bg"]); mail_link.pack(side="left", padx=5)
-        mail_link.bind("<Button-1>", lambda e: self.open_link("mailto:lotifv@gmail.com"))
-        tk.Label(footer_frame, text="Copyright © 2026 Chiakai Chang. All Rights Reserved.", font=("Arial", 8), bg=footer_frame["bg"]).pack(fill="x", pady=(5,0))
+        footer_left = tk.Frame(footer_frame, bg=self.COLOR_BG_WINDOW)
+        footer_left.pack(side="left")
+        
+        footer_right = tk.Frame(footer_frame, bg=self.COLOR_BG_WINDOW)
+        footer_right.pack(side="right")
+        
+        tk.Label(footer_left, text=f"PPTPlaner {self.version}", font=("Segoe UI", 9, "bold"), fg=self.COLOR_TEXT_MUTED, bg=self.COLOR_BG_WINDOW).pack(side="left")
+        tk.Label(footer_left, text="  |  ", font=("Segoe UI", 9), fg="#cbd5e1", bg=self.COLOR_BG_WINDOW).pack(side="left")
+        tk.Label(footer_left, text="Copyright © 2026 Chiakai Chang. All Rights Reserved.", font=("Segoe UI", 9), fg=self.COLOR_TEXT_MUTED, bg=self.COLOR_BG_WINDOW).pack(side="left")
+        
+        tk.Label(footer_right, text="Author: Chiakai Chang", font=("Segoe UI", 9), fg=self.COLOR_TEXT_MUTED, bg=self.COLOR_BG_WINDOW).pack(side="left", padx=(0, 15))
+        
+        gh_lbl = tk.Label(footer_right, text="GitHub", font=("Segoe UI", 9, "bold"), fg=self.COLOR_TEXT_MUTED, bg=self.COLOR_BG_WINDOW, cursor="hand2")
+        gh_lbl.pack(side="left", padx=8)
+        gh_lbl.bind("<Button-1>", lambda e: self.open_link("https://github.com/Chiakai-Chang/PPTPlaner"))
+        
+        li_lbl = tk.Label(footer_right, text="LinkedIn", font=("Segoe UI", 9, "bold"), fg=self.COLOR_TEXT_MUTED, bg=self.COLOR_BG_WINDOW, cursor="hand2")
+        li_lbl.pack(side="left", padx=8)
+        li_lbl.bind("<Button-1>", lambda e: self.open_link("https://www.linkedin.com/in/chiakai-chang-htciu"))
+        
+        mail_lbl = tk.Label(footer_right, text="Email", font=("Segoe UI", 9, "bold"), fg=self.COLOR_TEXT_MUTED, bg=self.COLOR_BG_WINDOW, cursor="hand2")
+        mail_lbl.pack(side="left", padx=8)
+        mail_lbl.bind("<Button-1>", lambda e: self.open_link("mailto:lotifv@gmail.com"))
+        
+        def make_link_hoverable(widget):
+            widget.bind("<Enter>", lambda e: widget.config(fg=self.COLOR_ACCENT, font=("Segoe UI", 9, "bold", "underline")))
+            widget.bind("<Leave>", lambda e: widget.config(fg=self.COLOR_TEXT_MUTED, font=("Segoe UI", 9, "bold")))
+        
+        make_link_hoverable(gh_lbl)
+        make_link_hoverable(li_lbl)
+        make_link_hoverable(mail_lbl)
 
         # --- Populate Main Frame ---
+        # Split main_frame into left_pane (controls) and right_pane (console/log) with grid for precise ratio
+        main_frame.grid_columnconfigure(0, weight=45, minsize=460)
+        main_frame.grid_columnconfigure(1, weight=55, minsize=550)
+        main_frame.grid_rowconfigure(0, weight=1)
+        
+        self.left_pane = tk.Frame(main_frame, bg=self.COLOR_BG_WINDOW)
+        self.left_pane.grid(row=0, column=0, sticky="nsew", padx=(0, 10))
+        
+        self.right_pane = tk.Frame(main_frame, bg=self.COLOR_BG_WINDOW)
+        self.right_pane.grid(row=0, column=1, sticky="nsew", padx=(10, 0))
+
         # --- Mode Selection ---
         self.mode_selection = tk.StringVar(value="new_generation")
-        mode_selection_frame = tk.Frame(main_frame)
-        mode_selection_frame.pack(fill="x", pady=(10, 5))
-        tk.Label(mode_selection_frame, text="選擇操作模式:").pack(side="left", padx=(0, 10))
-        tk.Radiobutton(mode_selection_frame, text="全新生成", variable=self.mode_selection, value="new_generation", command=self.toggle_mode_inputs).pack(side="left", padx=5)
-        tk.Radiobutton(mode_selection_frame, text="接續生成 SVG", variable=self.mode_selection, value="resume", command=self.toggle_mode_inputs).pack(side="left", padx=5)
-        tk.Radiobutton(mode_selection_frame, text="製作圖文簡報 (HTML)", variable=self.mode_selection, value="embed_images", command=self.toggle_mode_inputs).pack(side="left", padx=5)
-        tk.Radiobutton(mode_selection_frame, text="影片生成", variable=self.mode_selection, value="video_generation", command=self.toggle_mode_inputs).pack(side="left", padx=5)
+        mode_selection_frame = tk.Frame(self.left_pane, bg=self.COLOR_BG_WINDOW)
+        mode_selection_frame.pack(fill="x", pady=(5, 10))
+        
+        tk.Label(mode_selection_frame, text="⚙️ 選擇操作模式 (Select Mode):", font=self.FONT_TITLE, fg=self.COLOR_TEXT_PRIMARY, bg=self.COLOR_BG_WINDOW).pack(anchor="w", pady=(0, 6))
+        
+        radio_container = tk.Frame(mode_selection_frame, bg=self.COLOR_BG_WINDOW)
+        radio_container.pack(fill="x")
+        
+        for text, val in [("全新生成", "new_generation"), 
+                          ("接續生成 SVG", "resume"), 
+                          ("製作圖文簡報", "embed_images"), 
+                          ("影片生成", "video_generation")]:
+            rb = tk.Radiobutton(radio_container, text=text, variable=self.mode_selection, value=val,
+                                command=self.toggle_mode_inputs, bg=self.COLOR_BG_WINDOW, activebackground=self.COLOR_BG_WINDOW,
+                                fg=self.COLOR_TEXT_PRIMARY, selectcolor="#ffffff", font=self.FONT_BODY_BOLD, cursor="hand2")
+            rb.pack(side="left", padx=(0, 15))
 
         # --- Resume Specific Inputs ---
-        self.resume_output_dir_frame = tk.Frame(main_frame) 
-        tk.Label(self.resume_output_dir_frame, text="選擇現有輸出資料夾 (用於接續生成): ").grid(row=0, column=0, columnspan=3, sticky="w", pady=2)
-        self.resume_output_dir_path = tk.StringVar()
-        tk.Entry(self.resume_output_dir_frame, textvariable=self.resume_output_dir_path, width=80).grid(row=1, column=0, padx=(0, 5), columnspan=2, sticky="ew")
-        tk.Button(self.resume_output_dir_frame, text="瀏覽...", command=self.browse_resume_output_dir).grid(row=1, column=2)
+        self.resume_output_dir_frame = tk.Frame(self.left_pane, bg=self.COLOR_BG_CARD, highlightbackground=self.COLOR_BORDER, highlightthickness=1, bd=0)
         
-        tk.Label(self.resume_output_dir_frame, text="選擇 Gemini 模型:").grid(row=2, column=0, columnspan=3, sticky="w", pady=(10,2))
+        tk.Label(self.resume_output_dir_frame, text="🔁 接續簡報生成", font=self.FONT_TITLE, fg=self.COLOR_TEXT_PRIMARY, bg=self.COLOR_BG_CARD).pack(anchor="w", padx=15, pady=(15, 8))
+        
+        dir_label_row = tk.Frame(self.resume_output_dir_frame, bg=self.COLOR_BG_CARD)
+        dir_label_row.pack(fill="x", padx=15, pady=(4, 2))
+        tk.Label(dir_label_row, text="選擇現有輸出資料夾 (用於接續生成):", font=self.FONT_BODY_BOLD, fg=self.COLOR_TEXT_PRIMARY, bg=self.COLOR_BG_CARD).pack(side="left")
+        
+        dir_input_row = tk.Frame(self.resume_output_dir_frame, bg=self.COLOR_BG_CARD)
+        dir_input_row.pack(fill="x", padx=15, pady=4)
+        
+        self.resume_dir_entry = tk.Entry(dir_input_row, textvariable=self.resume_output_dir_path, font=self.FONT_BODY, bg="#f1f5f9", fg=self.COLOR_TEXT_PRIMARY,
+                                         insertbackground=self.COLOR_TEXT_PRIMARY, relief="flat", highlightthickness=1,
+                                         highlightbackground=self.COLOR_BORDER, highlightcolor=self.COLOR_BORDER_FOCUS)
+        self.resume_dir_entry.pack(side="left", fill="x", expand=True, padx=(0, 5))
+        def on_rdir_focus_in(e): self.resume_dir_entry.config(highlightbackground=self.COLOR_BORDER_FOCUS)
+        def on_rdir_focus_out(e): self.resume_dir_entry.config(highlightbackground=self.COLOR_BORDER)
+        self.resume_dir_entry.bind("<FocusIn>", on_rdir_focus_in)
+        self.resume_dir_entry.bind("<FocusOut>", on_rdir_focus_out)
+        
+        browse_rdir_btn = self.create_button(dir_input_row, "瀏覽...", self.browse_resume_output_dir, btn_type="secondary")
+        browse_rdir_btn.pack(side="right")
+        
+        model_label_row = tk.Frame(self.resume_output_dir_frame, bg=self.COLOR_BG_CARD)
+        model_label_row.pack(fill="x", padx=15, pady=(10, 2))
+        tk.Label(model_label_row, text="選擇 Gemini 模型:", font=self.FONT_BODY_BOLD, fg=self.COLOR_TEXT_PRIMARY, bg=self.COLOR_BG_CARD).pack(side="left")
+        
+        model_input_row = tk.Frame(self.resume_output_dir_frame, bg=self.COLOR_BG_CARD)
+        model_input_row.pack(fill="x", padx=15, pady=(2, 15))
+        
         self.resume_gemini_model_var = tk.StringVar(value=self.available_gemini_models[0] if self.available_gemini_models else "")
-        self.resume_model_combobox = ttk.Combobox(self.resume_output_dir_frame, textvariable=self.resume_gemini_model_var, values=self.available_gemini_models, state="readonly", width=30)
-        self.resume_model_combobox.grid(row=3, column=0, columnspan=2, sticky="w", pady=2)
-        self.resume_output_dir_frame.grid_columnconfigure(0, weight=1)
+        self.resume_model_combobox = ttk.Combobox(model_input_row, textvariable=self.resume_gemini_model_var, values=self.available_gemini_models, state="readonly", width=30)
+        self.resume_model_combobox.pack(side="left")
 
         # --- Embed Images Specific Inputs ---
-        self.embed_images_frame = tk.Frame(main_frame)
+        self.embed_images_frame = tk.Frame(self.left_pane, bg=self.COLOR_BG_CARD, highlightbackground=self.COLOR_BORDER, highlightthickness=1, bd=0)
         
-        # Top section: File selection
-        ei_top_frame = tk.Frame(self.embed_images_frame)
-        ei_top_frame.pack(fill="x", pady=5)
-        tk.Label(ei_top_frame, text="選擇原始 guide.html:").grid(row=0, column=0, sticky="w")
-        tk.Entry(ei_top_frame, textvariable=self.guide_html_path, width=70).grid(row=0, column=1, padx=5, sticky="ew")
-        tk.Button(ei_top_frame, text="瀏覽...", command=self.browse_guide_html).grid(row=0, column=2, padx=2)
-        tk.Button(ei_top_frame, text="讀取並列出頁面", command=self.load_slides_from_html, bg="#d0f0c0").grid(row=0, column=3, padx=10)
-        ei_top_frame.grid_columnconfigure(1, weight=1)
-
-        # Bottom section: Canvas + Scrollbar
-        self.image_canvas_frame = tk.Frame(self.embed_images_frame)
-        self.image_canvas_frame.pack(fill="both", expand=True)
-        self.image_canvas = tk.Canvas(self.image_canvas_frame, bg="white")
-        self.image_scrollbar = tk.Scrollbar(self.image_canvas_frame, orient="vertical", command=self.image_canvas.yview)
+        tk.Label(self.embed_images_frame, text="🖼️ 製作圖文簡報 (HTML)", font=self.FONT_TITLE, fg=self.COLOR_TEXT_PRIMARY, bg=self.COLOR_BG_CARD).pack(anchor="w", padx=15, pady=(15, 8))
+        
+        html_label_row = tk.Frame(self.embed_images_frame, bg=self.COLOR_BG_CARD)
+        html_label_row.pack(fill="x", padx=15, pady=(4, 2))
+        tk.Label(html_label_row, text="選擇原始 guide.html 檔案:", font=self.FONT_BODY_BOLD, fg=self.COLOR_TEXT_PRIMARY, bg=self.COLOR_BG_CARD).pack(side="left")
+        
+        html_input_row = tk.Frame(self.embed_images_frame, bg=self.COLOR_BG_CARD)
+        html_input_row.pack(fill="x", padx=15, pady=4)
+        
+        self.guide_html_entry = tk.Entry(html_input_row, textvariable=self.guide_html_path, font=self.FONT_BODY, bg="#f1f5f9", fg=self.COLOR_TEXT_PRIMARY,
+                                         insertbackground=self.COLOR_TEXT_PRIMARY, relief="flat", highlightthickness=1,
+                                         highlightbackground=self.COLOR_BORDER, highlightcolor=self.COLOR_BORDER_FOCUS)
+        self.guide_html_entry.pack(side="left", fill="x", expand=True, padx=(0, 5))
+        def on_html_focus_in(e): self.guide_html_entry.config(highlightbackground=self.COLOR_BORDER_FOCUS)
+        def on_html_focus_out(e): self.guide_html_entry.config(highlightbackground=self.COLOR_BORDER)
+        self.guide_html_entry.bind("<FocusIn>", on_html_focus_in)
+        self.guide_html_entry.bind("<FocusOut>", on_html_focus_out)
+        
+        browse_html_btn = self.create_button(html_input_row, "瀏覽...", self.browse_guide_html, btn_type="secondary")
+        browse_html_btn.pack(side="right", padx=(0, 5))
+        
+        load_slides_btn = self.create_button(html_input_row, "讀取並列出頁面", self.load_slides_from_html, btn_type="success")
+        load_slides_btn.pack(side="right")
+        
+        self.image_canvas_frame = tk.Frame(self.embed_images_frame, bg=self.COLOR_BG_CARD, highlightbackground=self.COLOR_BORDER, highlightthickness=1, bd=0)
+        self.image_canvas_frame.pack(fill="both", expand=True, padx=15, pady=(10, 15))
+        
+        self.image_canvas = tk.Canvas(self.image_canvas_frame, bg="#f8fafc", bd=0, highlightthickness=0)
+        self.image_scrollbar = ttk.Scrollbar(self.image_canvas_frame, orient="vertical", command=self.image_canvas.yview)
         self.image_canvas.configure(yscrollcommand=self.image_scrollbar.set)
+        
         self.image_scrollbar.pack(side="right", fill="y")
         self.image_canvas.pack(side="left", fill="both", expand=True)
-        self.slide_rows_frame = tk.Frame(self.image_canvas)
-        self.slide_rows_frame.pack(fill="both", expand=True, padx=5, pady=5)
-        self.image_canvas.create_window((0,0), window=self.slide_rows_frame, anchor="nw")
+        
+        self.slide_rows_frame = tk.Frame(self.image_canvas, bg="#f8fafc")
+        
+        def configure_canvas(e):
+            self.image_canvas.configure(scrollregion=self.image_canvas.bbox("all"))
+            self.image_canvas.itemconfig(canvas_window, width=e.width)
+            
+        canvas_window = self.image_canvas.create_window((0,0), window=self.slide_rows_frame, anchor="nw")
+        self.image_canvas.bind("<Configure>", configure_canvas)
         self.slide_rows_frame.bind("<Configure>", lambda e: self.image_canvas.configure(scrollregion=self.image_canvas.bbox("all")))
         self.image_canvas.bind("<MouseWheel>", self._on_mousewheel)
 
         # --- Video Generation Specific Inputs ---
-        self.video_generation_frame = tk.Frame(main_frame)
+        self.video_generation_frame = tk.Frame(self.left_pane, bg=self.COLOR_BG_CARD, highlightbackground=self.COLOR_BORDER, highlightthickness=1, bd=0)
         
-        # Top section: Output directory selection
-        vg_top_frame = tk.Frame(self.video_generation_frame)
-        vg_top_frame.pack(fill="x", pady=5)
-        tk.Label(vg_top_frame, text="選擇簡報輸出資料夾 (必須包含 slides/ 和 notes/): ").grid(row=0, column=0, sticky="w")
-        self.video_output_dir_path = tk.StringVar()
-        tk.Entry(vg_top_frame, textvariable=self.video_output_dir_path, width=70).grid(row=0, column=1, padx=5, sticky="ew")
-        tk.Button(vg_top_frame, text="瀏覽...", command=self.browse_video_output_dir).grid(row=0, column=2, padx=2)
-        vg_top_frame.grid_columnconfigure(1, weight=1)
+        tk.Label(self.video_generation_frame, text="🎥 簡報語音影片生成", font=self.FONT_TITLE, fg=self.COLOR_TEXT_PRIMARY, bg=self.COLOR_BG_CARD).pack(anchor="w", padx=15, pady=(15, 8))
         
-        # Middle section: Options
-        vg_options_frame = tk.Frame(self.video_generation_frame)
-        vg_options_frame.pack(fill="x", pady=5)
+        vdir_label_row = tk.Frame(self.video_generation_frame, bg=self.COLOR_BG_CARD)
+        vdir_label_row.pack(fill="x", padx=15, pady=(4, 2))
+        tk.Label(vdir_label_row, text="選擇簡報輸出資料夾 (必須包含 slides/ 和 notes/):", font=self.FONT_BODY_BOLD, fg=self.COLOR_TEXT_PRIMARY, bg=self.COLOR_BG_CARD).pack(side="left")
         
-        # TTS Provider selection
-        tk.Label(vg_options_frame, text="語音類型: ").grid(row=0, column=0, sticky="w", pady=2)
+        vdir_input_row = tk.Frame(self.video_generation_frame, bg=self.COLOR_BG_CARD)
+        vdir_input_row.pack(fill="x", padx=15, pady=4)
+        
+        self.video_dir_entry = tk.Entry(vdir_input_row, textvariable=self.video_output_dir_path, font=self.FONT_BODY, bg="#f1f5f9", fg=self.COLOR_TEXT_PRIMARY,
+                                         insertbackground=self.COLOR_TEXT_PRIMARY, relief="flat", highlightthickness=1,
+                                         highlightbackground=self.COLOR_BORDER, highlightcolor=self.COLOR_BORDER_FOCUS)
+        self.video_dir_entry.pack(side="left", fill="x", expand=True, padx=(0, 5))
+        def on_vdir_focus_in(e): self.video_dir_entry.config(highlightbackground=self.COLOR_BORDER_FOCUS)
+        def on_vdir_focus_out(e): self.video_dir_entry.config(highlightbackground=self.COLOR_BORDER)
+        self.video_dir_entry.bind("<FocusIn>", on_vdir_focus_in)
+        self.video_dir_entry.bind("<FocusOut>", on_vdir_focus_out)
+        
+        browse_vdir_btn = self.create_button(vdir_input_row, "瀏覽...", self.browse_video_output_dir, btn_type="secondary")
+        browse_vdir_btn.pack(side="right")
+        
+        options_grid = tk.Frame(self.video_generation_frame, bg=self.COLOR_BG_CARD)
+        options_grid.pack(fill="x", padx=15, pady=10)
+        options_grid.grid_columnconfigure(1, weight=1)
+        
+        tk.Label(options_grid, text="語音類型:", font=self.FONT_BODY_BOLD, fg=self.COLOR_TEXT_PRIMARY, bg=self.COLOR_BG_CARD).grid(row=0, column=0, sticky="w", pady=6, padx=(0, 10))
         self.video_tts_provider = tk.StringVar(value="edge-tts")
-        tts_combobox = ttk.Combobox(vg_options_frame, textvariable=self.video_tts_provider, values=["edge-tts"], state="readonly", width=20)
-        tts_combobox.grid(row=0, column=1, sticky="w", pady=2, padx=5)
+        tts_combobox = ttk.Combobox(options_grid, textvariable=self.video_tts_provider, values=["edge-tts"], state="readonly", width=18)
+        tts_combobox.grid(row=0, column=1, sticky="w", pady=6)
         
-        # Image Provider selection - only "none" for now
-        tk.Label(vg_options_frame, text="圖像類型: ").grid(row=1, column=0, sticky="w", pady=2)
+        tk.Label(options_grid, text="圖像類型:", font=self.FONT_BODY_BOLD, fg=self.COLOR_TEXT_PRIMARY, bg=self.COLOR_BG_CARD).grid(row=1, column=0, sticky="w", pady=6, padx=(0, 10))
         self.video_image_provider = tk.StringVar(value="none")
-        image_label = tk.Label(vg_options_frame, text="文字覆疊 (預設)", fg="#666")
-        image_label.grid(row=1, column=1, sticky="w", pady=2, padx=5)
+        image_label = tk.Label(options_grid, text="文字覆疊 (預設，不需額外模組)", font=self.FONT_BODY, fg=self.COLOR_TEXT_MUTED, bg=self.COLOR_BG_CARD)
+        image_label.grid(row=1, column=1, sticky="w", pady=6)
         
-        # Add info text
-        tk.Label(vg_options_frame, text="註: 圖像生成需要額外安裝 ComfyUI 或 RunningHub", fg="#999", font=("Arial", 8)).grid(row=2, column=0, columnspan=2, sticky="w", pady=5)
+        v_alert = tk.Frame(self.video_generation_frame, bg=self.COLOR_DANGER_LIGHT, highlightbackground="#fecaca", highlightthickness=1, bd=0)
+        v_alert.pack(fill="x", padx=15, pady=(5, 10), ipady=6, ipadx=8)
+        tk.Label(v_alert, text="💡 提示：圖像生成需要額外安裝 ComfyUI 或 RunningHub 並下載模型。", font=self.FONT_SMALL, fg=self.COLOR_DANGER, bg=self.COLOR_DANGER_LIGHT, justify="left", wraplength=400).pack(fill="x")
         
-        # Bottom section: Status
-        vg_status_frame = tk.Frame(self.video_generation_frame)
-        vg_status_frame.pack(fill="x", pady=10)
-        self.video_status_label = tk.Label(vg_status_frame, text="", fg="#9e9e9e", font=("Arial", 8))
+        vg_status_frame = tk.Frame(self.video_generation_frame, bg=self.COLOR_BG_CARD)
+        vg_status_frame.pack(fill="x", padx=15, pady=(5, 15))
+        self.video_status_label = tk.Label(vg_status_frame, text="", font=self.FONT_SMALL, fg=self.COLOR_TEXT_MUTED, bg=self.COLOR_BG_CARD)
         self.video_status_label.pack(side="left")
 
         # --- New Generation Specific Inputs ---
-        self.new_generation_controls_frame = tk.Frame(main_frame)
+        self.new_generation_controls_frame = tk.Frame(self.left_pane, bg=self.COLOR_BG_WINDOW)
         
-        # --- Agent Selection (Moved to Top) ---
-        agent_selection_frame = tk.Frame(self.new_generation_controls_frame)
-        agent_selection_frame.grid(row=0, column=0, columnspan=3, sticky="w", pady=(0, 5))
-        tk.Label(agent_selection_frame, text="AI Agent:").pack(side="left", padx=(0, 10))
+        # --- Card 1: AI Agent & Model Setup ---
+        self.card_agent = tk.Frame(self.new_generation_controls_frame, bg=self.COLOR_BG_CARD, highlightbackground=self.COLOR_BORDER, highlightthickness=1, bd=0)
+        self.card_agent.pack(fill="x", pady=(0, 10), ipady=8, ipadx=10)
+        
+        tk.Label(self.card_agent, text="🤖 AI Agent 與模型設定", font=self.FONT_TITLE, fg=self.COLOR_TEXT_PRIMARY, bg=self.COLOR_BG_CARD).pack(anchor="w", padx=10, pady=(10, 8))
+        
+        agent_row = tk.Frame(self.card_agent, bg=self.COLOR_BG_CARD)
+        agent_row.pack(fill="x", padx=10, pady=4)
+        
+        tk.Label(agent_row, text="AI Agent 類型:", font=self.FONT_BODY_BOLD, fg=self.COLOR_TEXT_PRIMARY, bg=self.COLOR_BG_CARD).pack(side="left")
+        
         self.agent_type_var = tk.StringVar(value="antigravity")
-        agent_combobox = ttk.Combobox(agent_selection_frame, textvariable=self.agent_type_var, values=self.agent_types, state="readonly", width=20)
-        agent_combobox.pack(side="left", padx=(0, 10))
+        self.agent_combobox = ttk.Combobox(agent_row, textvariable=self.agent_type_var, values=self.agent_types, state="readonly", width=18)
+        self.agent_combobox.pack(side="left", padx=10)
         
-        # Agent availability indicator
-        self.agent_status_label = tk.Label(agent_selection_frame, text="(偵測中...)", fg="#ff9800")
+        self.agent_status_label = tk.Label(agent_row, text="(偵測中...)", font=self.FONT_BODY_BOLD, fg="#ff9800", bg=self.COLOR_BG_CARD)
         self.agent_status_label.pack(side="left")
         
-        # Start background detection after UI is shown
         self.after(100, self._start_background_detection)
-        
-        # Update status when agent changes
         self.agent_type_var.trace_add("write", self._update_agent_status)
         
-        # --- Model/API Configuration Frame (conditionally shown) ---
-        self.model_config_frame = tk.Frame(self.new_generation_controls_frame)
-        self.model_config_frame.grid(row=1, column=0, columnspan=3, sticky="w", pady=5)
+        # Model config frame
+        self.model_config_frame = tk.Frame(self.card_agent, bg=self.COLOR_BG_CARD)
+        self.model_config_frame.pack(fill="x", padx=10, pady=4)
         
-        # API URL configuration for OpenAI-compatible agents
-        self.api_config_frame = tk.Frame(self.model_config_frame)
-        tk.Label(self.api_config_frame, text="API 端點 URL:").pack(side="left", padx=(0, 10))
+        self.api_config_frame = tk.Frame(self.model_config_frame, bg=self.COLOR_BG_CARD)
+        tk.Label(self.api_config_frame, text="API 端點 URL:", font=self.FONT_BODY, fg=self.COLOR_TEXT_PRIMARY, bg=self.COLOR_BG_CARD).pack(side="left", padx=(0, 10))
         self.api_base_var = tk.StringVar(value="http://localhost:11434/v1")
-        self.api_base_entry = tk.Entry(self.api_config_frame, textvariable=self.api_base_var, width=40)
+        self.api_base_entry = tk.Entry(self.api_config_frame, textvariable=self.api_base_var, font=self.FONT_BODY, bg="#f1f5f9", fg=self.COLOR_TEXT_PRIMARY,
+                                       insertbackground=self.COLOR_TEXT_PRIMARY, relief="flat", highlightthickness=1,
+                                       highlightbackground=self.COLOR_BORDER, highlightcolor=self.COLOR_BORDER_FOCUS, width=32)
         self.api_base_entry.pack(side="left", padx=(0, 5))
-        self.detect_btn = tk.Button(self.api_config_frame, text="偵測", command=self._detect_local_models, bg="#e0f0e0")
+        def on_api_focus_in(e): self.api_base_entry.config(highlightbackground=self.COLOR_BORDER_FOCUS)
+        def on_api_focus_out(e): self.api_base_entry.config(highlightbackground=self.COLOR_BORDER)
+        self.api_base_entry.bind("<FocusIn>", on_api_focus_in)
+        self.api_base_entry.bind("<FocusOut>", on_api_focus_out)
+        
+        self.detect_btn = self.create_button(self.api_config_frame, "偵測", self._detect_local_models, btn_type="secondary")
         self.detect_btn.pack(side="left", padx=(0, 5))
         
-        # Status label to show detection state
-        self.detect_status_label = tk.Label(self.api_config_frame, text="(尚未偵測)", fg="#9e9e9e", font=("Arial", 8))
+        self.detect_status_label = tk.Label(self.api_config_frame, text="(尚未偵測)", font=self.FONT_SMALL, fg=self.COLOR_TEXT_MUTED, bg=self.COLOR_BG_CARD)
         self.detect_status_label.pack(side="left", padx=(5, 0))
         
-        # Endpoint selection (when multiple endpoints available)
-        self.endpoint_select_frame = tk.Frame(self.model_config_frame)
-        self.endpoint_select_frame.pack_forget()  # Hidden by default
-        tk.Label(self.endpoint_select_frame, text="選擇端點:").pack(side="left", padx=(0, 10))
+        self.endpoint_select_frame = tk.Frame(self.model_config_frame, bg=self.COLOR_BG_CARD)
+        self.endpoint_select_frame.pack_forget()
+        tk.Label(self.endpoint_select_frame, text="選擇端點:", font=self.FONT_BODY, fg=self.COLOR_TEXT_PRIMARY, bg=self.COLOR_BG_CARD).pack(side="left", padx=(0, 10))
         self.endpoint_var = tk.StringVar()
         self.endpoint_combobox = ttk.Combobox(self.endpoint_select_frame, textvariable=self.endpoint_var, state="readonly", width=50)
         self.endpoint_combobox.pack(side="left")
         
-        # Model selection (shown for agents that support model selection)
-        model_selection_frame = tk.Frame(self.model_config_frame)
-        tk.Label(model_selection_frame, text="選擇模型:").pack(side="left", padx=(0, 10))
+        self.model_select_row = tk.Frame(self.model_config_frame, bg=self.COLOR_BG_CARD)
+        self.model_select_row.pack(fill="x", pady=4)
+        tk.Label(self.model_select_row, text="選擇 AI 模型:", font=self.FONT_BODY_BOLD, fg=self.COLOR_TEXT_PRIMARY, bg=self.COLOR_BG_CARD).pack(side="left", padx=(0, 10))
         self.initial_gemini_model_var = tk.StringVar(value=self.available_gemini_models[0] if self.available_gemini_models else "")
-        self.initial_model_combobox = ttk.Combobox(model_selection_frame, textvariable=self.initial_gemini_model_var, values=self.available_gemini_models, state="readonly", width=30)
+        self.initial_model_combobox = ttk.Combobox(self.model_select_row, textvariable=self.initial_gemini_model_var, values=self.available_gemini_models, state="readonly", width=25)
         self.initial_model_combobox.pack(side="left")
 
-        # --- PDF/Document Parsing Options Frame ---
+        # --- Card 2: Document & Parser Setup ---
         self.pdf_parser_map = {
             "線上轉檔 (推薦免安裝 - 最輕鬆)": "online",
             "輕量化本地提取 (pypdf - 僅限文字PDF)": "pypdf",
             "高精度本地解析 (MinerU - 支援多格式/CPU/GPU)": "mineru",
             "本地 Marker 解析 (僅限PDF/極耗GPU)": "marker"
         }
-        self.pdf_frame = tk.LabelFrame(self.new_generation_controls_frame, text="PDF/多格式文件解析設定 (當選擇 PDF/Word 檔案時生效)", font=("Arial", 10, "bold"), padx=10, pady=5)
-        self.pdf_frame.grid(row=2, column=0, columnspan=3, sticky="ew", pady=10)
         
-        tk.Label(self.pdf_frame, text="選擇解析方式:").grid(row=0, column=0, sticky="w", pady=2)
+        self.card_document = tk.Frame(self.new_generation_controls_frame, bg=self.COLOR_BG_CARD, highlightbackground=self.COLOR_BORDER, highlightthickness=1, bd=0)
+        self.card_document.pack(fill="x", pady=10, ipady=8, ipadx=10)
+        
+        tk.Label(self.card_document, text="📄 文件解析與來源設定", font=self.FONT_TITLE, fg=self.COLOR_TEXT_PRIMARY, bg=self.COLOR_BG_CARD).pack(anchor="w", padx=10, pady=(10, 8))
+        
+        parser_row = tk.Frame(self.card_document, bg=self.COLOR_BG_CARD)
+        parser_row.pack(fill="x", padx=10, pady=4)
+        
+        tk.Label(parser_row, text="選擇解析方式:", font=self.FONT_BODY_BOLD, fg=self.COLOR_TEXT_PRIMARY, bg=self.COLOR_BG_CARD).pack(side="left", padx=(0, 10))
         
         self.pdf_parser_combobox = ttk.Combobox(
-            self.pdf_frame, 
+            parser_row, 
             values=list(self.pdf_parser_map.keys()), 
             state="readonly", 
-            width=50
+            width=36
         )
         self.pdf_parser_combobox.set("線上轉檔 (推薦免安裝 - 最輕鬆)")
-        self.pdf_parser_combobox.grid(row=0, column=1, sticky="w", padx=10, pady=2)
+        self.pdf_parser_combobox.pack(side="left")
         self.pdf_parser_combobox.bind("<<ComboboxSelected>>", self._on_pdf_parser_changed)
         
-        self.pdf_desc_label = tk.Label(self.pdf_frame, text="", justify="left", anchor="w", wraplength=700, font=("Arial", 9))
-        self.pdf_desc_label.grid(row=1, column=0, columnspan=2, sticky="w", pady=5)
+        self.alert_frame = tk.Frame(self.card_document, bg=self.COLOR_ACCENT_LIGHT, highlightbackground="#bfdbfe", highlightthickness=1, bd=0)
+        self.alert_frame.pack(fill="x", padx=10, pady=8, ipady=6, ipadx=8)
         
-        self.pdf_link_label = tk.Label(self.pdf_frame, text="🔗 前往 MinerU 線上轉檔平台", fg="blue", cursor="hand2", font=("Arial", 9, "underline"))
-        self.pdf_link_label.grid(row=2, column=0, columnspan=2, sticky="w", pady=(0, 5))
+        self.pdf_desc_label = tk.Label(self.alert_frame, text="", justify="left", anchor="w", wraplength=420, font=self.FONT_SMALL, fg="#1e40af", bg=self.COLOR_ACCENT_LIGHT)
+        self.pdf_desc_label.pack(fill="x", expand=True)
+        
+        self.pdf_link_label = tk.Label(self.card_document, text="🔗 前往 MinerU 線上轉檔平台", fg=self.COLOR_ACCENT, cursor="hand2", font=("Segoe UI", 9, "underline"), bg=self.COLOR_BG_CARD)
+        self.pdf_link_label.pack(anchor="w", padx=10, pady=(0, 5))
         self.pdf_link_label.bind("<Button-1>", lambda e: self.open_link("https://mineru.net/OpenSourceTools/Extractor"))
         
+        self.file_label_row = tk.Frame(self.card_document, bg=self.COLOR_BG_CARD)
+        self.file_label_row.pack(fill="x", padx=10, pady=(8, 2))
+        tk.Label(self.file_label_row, text="選擇要分析的檔案:", font=self.FONT_BODY_BOLD, fg=self.COLOR_TEXT_PRIMARY, bg=self.COLOR_BG_CARD).pack(side="left")
+        
+        file_input_row = tk.Frame(self.card_document, bg=self.COLOR_BG_CARD)
+        file_input_row.pack(fill="x", padx=10, pady=4)
+        
+        self.source_file_entry = tk.Entry(file_input_row, textvariable=self.source_file_path, font=self.FONT_BODY, bg="#f1f5f9", fg=self.COLOR_TEXT_PRIMARY,
+                                          insertbackground=self.COLOR_TEXT_PRIMARY, relief="flat", highlightthickness=1,
+                                          highlightbackground=self.COLOR_BORDER, highlightcolor=self.COLOR_BORDER_FOCUS)
+        self.source_file_entry.pack(side="left", fill="x", expand=True, padx=(0, 5))
+        def on_src_focus_in(e): self.source_file_entry.config(highlightbackground=self.COLOR_BORDER_FOCUS)
+        def on_src_focus_out(e): self.source_file_entry.config(highlightbackground=self.COLOR_BORDER)
+        self.source_file_entry.bind("<FocusIn>", on_src_focus_in)
+        self.source_file_entry.bind("<FocusOut>", on_src_focus_out)
+        
+        browse_file_btn = self.create_button(file_input_row, "瀏覽...", self.browse_files, btn_type="secondary")
+        browse_file_btn.pack(side="right")
+        
+        # Trigger description init
         self._on_pdf_parser_changed()
 
-        # --- File Selection (Moved Below Parser Settings) ---
-        tk.Label(self.new_generation_controls_frame, text="選擇要分析的檔案:").grid(row=3, column=0, sticky="w", pady=2)
-        tk.Entry(self.new_generation_controls_frame, textvariable=self.source_file_path, width=80).grid(row=4, column=0, padx=(0, 5), columnspan=2, sticky="ew")
-        tk.Button(self.new_generation_controls_frame, text="瀏覽...", command=self.browse_files).grid(row=4, column=2)
+        # --- Card 3: Quality & Custom Settings ---
+        self.card_settings = tk.Frame(self.new_generation_controls_frame, bg=self.COLOR_BG_CARD, highlightbackground=self.COLOR_BORDER, highlightthickness=1, bd=0)
+        self.card_settings.pack(fill="x", pady=(10, 0), ipady=8, ipadx=10)
         
-        # --- Reworks Frame ---
-        rework_frame = tk.Frame(self.new_generation_controls_frame)
-        rework_frame.grid(row=5, column=0, columnspan=3, sticky="w", pady=5)
-        tk.Label(rework_frame, text="最大修正次數 (0-10):").pack(side="left", padx=(0, 10))
+        tk.Label(self.card_settings, text="⚙️ 生成品質與自訂指令", font=self.FONT_TITLE, fg=self.COLOR_TEXT_PRIMARY, bg=self.COLOR_BG_CARD).pack(anchor="w", padx=10, pady=(10, 8))
         
-        tk.Label(rework_frame, text="分析:").pack(side="left", padx=(0, 5))
-        self.analysis_reworks_spinbox = tk.Spinbox(rework_frame, from_=0, to=10, width=5, justify="center")
-        self.analysis_reworks_spinbox.pack(side="left", padx=(0, 15))
-        self.analysis_reworks_spinbox.delete(0, "end"); self.analysis_reworks_spinbox.insert(0, "6")
-
-        tk.Label(rework_frame, text="規劃:").pack(side="left", padx=(0, 5))
-        self.plan_reworks_spinbox = tk.Spinbox(rework_frame, from_=0, to=10, width=5, justify="center")
-        self.plan_reworks_spinbox.pack(side="left", padx=(0, 15))
-        self.plan_reworks_spinbox.delete(0, "end"); self.plan_reworks_spinbox.insert(0, "5")
+        rework_title_row = tk.Frame(self.card_settings, bg=self.COLOR_BG_CARD)
+        rework_title_row.pack(fill="x", padx=10, pady=2)
+        tk.Label(rework_title_row, text="設定最大修正審查次數 (0-10):", font=self.FONT_BODY_BOLD, fg=self.COLOR_TEXT_PRIMARY, bg=self.COLOR_BG_CARD).pack(side="left")
         
-        tk.Label(rework_frame, text="簡報:").pack(side="left", padx=(0, 5))
-        self.slide_reworks_spinbox = tk.Spinbox(rework_frame, from_=0, to=10, width=5, justify="center")
-        self.slide_reworks_spinbox.pack(side="left", padx=(0, 15))
-        self.slide_reworks_spinbox.delete(0, "end"); self.slide_reworks_spinbox.insert(0, "5")
+        rework_grid = tk.Frame(self.card_settings, bg=self.COLOR_BG_CARD)
+        rework_grid.pack(fill="x", padx=10, pady=4)
+        rework_grid.grid_columnconfigure((0, 1, 2, 3), weight=1, uniform="rework_col")
+        
+        def add_spinbox(grid, text, row, col, default_val):
+            cell = tk.Frame(grid, bg=self.COLOR_BG_CARD)
+            cell.grid(row=row, column=col, sticky="nsew", padx=4, pady=2)
+            tk.Label(cell, text=text, font=self.FONT_BODY, fg=self.COLOR_TEXT_MUTED, bg=self.COLOR_BG_CARD).pack(side="left", padx=(0, 5))
+            sb = tk.Spinbox(cell, from_=0, to=10, width=4, font=self.FONT_BODY_BOLD, justify="center",
+                            bg="#f1f5f9", fg=self.COLOR_TEXT_PRIMARY, relief="flat", highlightthickness=1,
+                            highlightbackground=self.COLOR_BORDER, highlightcolor=self.COLOR_BORDER_FOCUS)
+            sb.pack(side="left")
+            sb.delete(0, "end")
+            sb.insert(0, str(default_val))
+            
+            def on_sb_focus_in(e, widget=sb): widget.config(highlightbackground=self.COLOR_BORDER_FOCUS)
+            def on_sb_focus_out(e, widget=sb): widget.config(highlightbackground=self.COLOR_BORDER)
+            sb.bind("<FocusIn>", on_sb_focus_in)
+            sb.bind("<FocusOut>", on_sb_focus_out)
+            return sb
+            
+        self.analysis_reworks_spinbox = add_spinbox(rework_grid, "分析", 0, 0, 6)
+        self.plan_reworks_spinbox = add_spinbox(rework_grid, "規劃", 0, 1, 5)
+        self.slide_reworks_spinbox = add_spinbox(rework_grid, "簡報", 0, 2, 5)
+        self.memo_reworks_spinbox = add_spinbox(rework_grid, "講稿", 0, 3, 3)
 
-        tk.Label(rework_frame, text="備忘稿:").pack(side="left", padx=(0, 5))
-        self.memo_reworks_spinbox = tk.Spinbox(rework_frame, from_=0, to=10, width=5, justify="center")
-        self.memo_reworks_spinbox.pack(side="left")
-        self.memo_reworks_spinbox.delete(0, "end"); self.memo_reworks_spinbox.insert(0, "3")
-
-        # --- SVG Generation Checkbox ---
-        options_frame = tk.Frame(self.new_generation_controls_frame)
-        options_frame.grid(row=6, column=0, columnspan=3, sticky="w", pady=5)
-        self.svg_checkbox = tk.Checkbutton(options_frame, text="生成 SVG (實驗性功能，會增加 token 用量)", variable=self.generate_svg)
+        options_row = tk.Frame(self.card_settings, bg=self.COLOR_BG_CARD)
+        options_row.pack(fill="x", padx=10, pady=6)
+        self.svg_checkbox = tk.Checkbutton(options_row, text="生成視覺 SVG 素材 (實驗性功能，會增加 token 用量)",
+                                           variable=self.generate_svg, font=self.FONT_BODY, fg=self.COLOR_TEXT_PRIMARY,
+                                           bg=self.COLOR_BG_CARD, activebackground=self.COLOR_BG_CARD, selectcolor="#ffffff")
         self.svg_checkbox.pack(side="left")
         
-        # --- Custom Instructions ---
-        instr_frame = tk.Frame(self.new_generation_controls_frame)
-        instr_frame.grid(row=7, column=0, columnspan=3, sticky="ew", pady=5)
-        tk.Label(instr_frame, text="自訂指令 (選填):").grid(row=0, column=0, sticky="w")
-        self.custom_instruction_text = scrolledtext.ScrolledText(instr_frame, height=4, state="normal", bg="#f5f5f5")
-        self.custom_instruction_text.grid(row=1, column=0, columnspan=2, sticky="ew", pady=2)
-        instr_frame.grid_columnconfigure(0, weight=1)
+        instr_label_row = tk.Frame(self.card_settings, bg=self.COLOR_BG_CARD)
+        instr_label_row.pack(fill="x", padx=10, pady=(6, 2))
+        tk.Label(instr_label_row, text="自訂指令 (選填):", font=self.FONT_BODY_BOLD, fg=self.COLOR_TEXT_PRIMARY, bg=self.COLOR_BG_CARD).pack(side="left")
+        
+        instr_text_row = tk.Frame(self.card_settings, bg=self.COLOR_BG_CARD)
+        instr_text_row.pack(fill="x", padx=10, pady=(0, 8))
+        self.custom_instruction_text = scrolledtext.ScrolledText(
+            instr_text_row, height=2, state="normal", font=self.FONT_BODY,
+            bg="#f1f5f9", fg=self.COLOR_TEXT_PRIMARY, insertbackground=self.COLOR_TEXT_PRIMARY, relief="flat",
+            highlightthickness=1, highlightbackground=self.COLOR_BORDER, highlightcolor=self.COLOR_BORDER_FOCUS
+        )
+        self.custom_instruction_text.pack(fill="x", expand=True)
+        def on_txt_focus_in(e): self.custom_instruction_text.config(highlightbackground=self.COLOR_BORDER_FOCUS)
+        def on_txt_focus_out(e): self.custom_instruction_text.config(highlightbackground=self.COLOR_BORDER)
+        self.custom_instruction_text.bind("<FocusIn>", on_txt_focus_in)
+        self.custom_instruction_text.bind("<FocusOut>", on_txt_focus_out)
 
         self.new_generation_controls_frame.grid_columnconfigure(0, weight=1)
 
-
         # Common elements (will be packed in toggle_mode_inputs)
-        self.run_button = tk.Button(main_frame, text="開始生成", command=self.run_orchestration, font=("Arial", 12, "bold"), bg="#c0d8f0")
-        self.progress_label = tk.Label(main_frame, text="執行進度:")
-        self.console = scrolledtext.ScrolledText(main_frame, wrap=tk.WORD, state="disabled", bg="#f5f5f5")
+        self.run_button = self.create_button(self.left_pane, "🚀 開始簡報生成 (Start Generation)", self.run_orchestration, btn_type="primary")
+        self.progress_label = tk.Label(self.right_pane, text="📊 執行進度與詳細日誌 (Console Log):", font=self.FONT_TITLE, fg=self.COLOR_TEXT_PRIMARY, bg=self.COLOR_BG_WINDOW)
+        
+        # --- AI Auditor Dashboard Panel ---
+        self.auditor_frame = tk.Frame(self.right_pane, bg=self.COLOR_BG_CARD, highlightbackground=self.COLOR_BORDER, highlightthickness=1, bd=0)
+        self.auditor_frame.pack(fill="x", pady=(0, 15), padx=10, ipady=8)
+        
+        header_row = tk.Frame(self.auditor_frame, bg=self.COLOR_BG_CARD)
+        header_row.pack(fill="x", padx=15, pady=(10, 8))
+        tk.Label(header_row, text="🤖 AI 品質審查看板 (AI Auditor Dashboard)", font=self.FONT_TITLE, fg=self.COLOR_ACCENT, bg=self.COLOR_BG_CARD).pack(side="left")
+        
+        dashboard_grid = tk.Frame(self.auditor_frame, bg=self.COLOR_BG_CARD)
+        dashboard_grid.pack(fill="x", padx=15, pady=5)
+        
+        tk.Label(dashboard_grid, text="審查階段", font=self.FONT_BODY_BOLD, bg=self.COLOR_BG_CARD, fg=self.COLOR_TEXT_MUTED).grid(row=0, column=0, sticky="w", pady=6)
+        tk.Label(dashboard_grid, text="審查狀態與當前處理", font=self.FONT_BODY_BOLD, bg=self.COLOR_BG_CARD, fg=self.COLOR_TEXT_MUTED).grid(row=0, column=1, sticky="w", padx=30, pady=6)
+        tk.Label(dashboard_grid, text="重製次數", font=self.FONT_BODY_BOLD, bg=self.COLOR_BG_CARD, fg=self.COLOR_TEXT_MUTED).grid(row=0, column=2, sticky="e", pady=6)
+        
+        self.phase_status_vars = {}
+        self.phase_rework_counts = {}
+        self.phase_status_labels = {}
+        self.phase_rework_labels = {}
+        
+        phases_info = [
+            ("phase1", "1. 文獻分析審查 (Analysis)"),
+            ("phase2", "2. 教學架構審查 (Planning)"),
+            ("phase3", "3. 簡報排版審查 (Slide Gen)"),
+            ("phase4", "4. 備忘講稿審查 (Speaker Notes)"),
+            ("phase5", "5. 視覺素材審查 (Visual SVGs)")
+        ]
+        
+        for idx, (key, name) in enumerate(phases_info):
+            row = idx + 1
+            tk.Label(dashboard_grid, text=name, font=self.FONT_BODY, bg=self.COLOR_BG_CARD, fg=self.COLOR_TEXT_PRIMARY).grid(row=row, column=0, sticky="w", pady=5)
+            
+            status_var = tk.StringVar(value="⚪ 待命 (Idle)")
+            self.phase_status_vars[key] = status_var
+            lbl = tk.Label(dashboard_grid, textvariable=status_var, font=self.FONT_BODY_BOLD, bg=self.COLOR_BG_CARD, fg=self.COLOR_TEXT_MUTED)
+            lbl.grid(row=row, column=1, sticky="w", padx=30, pady=5)
+            self.phase_status_labels[key] = lbl
+            
+            rework_var = tk.StringVar(value="0")
+            self.phase_rework_counts[key] = 0
+            rlbl = tk.Label(dashboard_grid, textvariable=rework_var, font=self.FONT_BODY_BOLD, bg=self.COLOR_BG_CARD, fg=self.COLOR_TEXT_PRIMARY)
+            rlbl.grid(row=row, column=2, sticky="e", pady=5)
+            self.phase_rework_labels[key] = (rework_var, rlbl)
+            
+        dashboard_grid.grid_columnconfigure(0, weight=3)
+        dashboard_grid.grid_columnconfigure(1, weight=3)
+        dashboard_grid.grid_columnconfigure(2, weight=1)
 
-        # Initial toggle to set correct visibility
+        # Console
+        self.console = scrolledtext.ScrolledText(self.right_pane, wrap=tk.WORD, state="disabled", bg="#0f172a", fg="#f8fafc",
+                                                 font=self.FONT_CONSOLE, insertbackground="white", bd=0, highlightthickness=1, highlightbackground=self.COLOR_BORDER)
+
+        # Initial toggle
         self.toggle_mode_inputs()
+
+    def create_button(self, parent, text, command, btn_type="primary"):
+        if btn_type == "primary":
+            bg_color = self.COLOR_ACCENT
+            fg_color = "#ffffff"
+            hover_color = self.COLOR_ACCENT_HOVER
+        elif btn_type == "success":
+            bg_color = self.COLOR_SUCCESS
+            fg_color = "#ffffff"
+            hover_color = "#059669"
+        else:  # secondary
+            bg_color = "#f1f5f9"
+            fg_color = self.COLOR_TEXT_PRIMARY
+            hover_color = "#e2e8f0"
+        
+        btn = tk.Button(parent, text=text, command=command, font=self.FONT_BODY_BOLD, bg=bg_color, fg=fg_color,
+                        activebackground=hover_color, activeforeground=fg_color, relief="flat", bd=0, padx=12, pady=6, cursor="hand2")
+        
+        def on_enter(e):
+            btn.config(bg=hover_color)
+        def on_leave(e):
+            btn.config(bg=bg_color)
+        btn.bind("<Enter>", on_enter)
+        btn.bind("<Leave>", on_leave)
+        return btn
+
     def _on_mousewheel(self, event):
         self.image_canvas.yview_scroll(int(-1*(event.delta/120)), "units")
 
@@ -376,9 +660,9 @@ class App(tk.Tk):
         
         # Show link only for online mode
         if internal_parser == "online":
-            self.pdf_link_label.grid(row=2, column=0, columnspan=2, sticky="w", pady=(0, 5))
+            self.pdf_link_label.pack(anchor="w", padx=10, pady=(0, 5), before=self.file_label_row)
         else:
-            self.pdf_link_label.grid_forget()
+            self.pdf_link_label.pack_forget()
 
     def browse_resume_output_dir(self):
         dirpath = filedialog.askdirectory()
@@ -417,18 +701,27 @@ class App(tk.Tk):
             for idx, block in enumerate(slide_blocks):
                 slide_id = f"slide-{idx+1:02d}"
                 
-                row_frame = tk.Frame(self.slide_rows_frame)
-                row_frame.pack(fill="x", pady=2)
+                row_frame = tk.Frame(self.slide_rows_frame, bg="#f8fafc")
+                row_frame.pack(fill="x", pady=4, padx=5)
 
-                tk.Label(row_frame, text=f"頁面 {idx+1}:", font=("Arial", 11, "bold"), anchor="w").grid(row=0, column=0, padx=(0,5), sticky="w")
+                tk.Label(row_frame, text=f"頁面 {idx+1}:", font=self.FONT_BODY_BOLD, bg="#f8fafc", fg=self.COLOR_TEXT_PRIMARY, anchor="w").grid(row=0, column=0, padx=(5,5), sticky="w")
                 
-                tk.Label(row_frame, text="對應圖片:", anchor="e").grid(row=0, column=1)
+                tk.Label(row_frame, text="對應圖片:", font=self.FONT_BODY, bg="#f8fafc", fg=self.COLOR_TEXT_MUTED, anchor="e").grid(row=0, column=1, padx=(5,5))
                 img_var = tk.StringVar()
-                img_entry = tk.Entry(row_frame, textvariable=img_var, width=50)
-                img_entry.grid(row=0, column=2, padx=5)
+                img_entry = tk.Entry(row_frame, textvariable=img_var, font=self.FONT_BODY, bg="#ffffff", fg=self.COLOR_TEXT_PRIMARY,
+                                     insertbackground=self.COLOR_TEXT_PRIMARY, relief="flat", highlightthickness=1,
+                                     highlightbackground=self.COLOR_BORDER, highlightcolor=self.COLOR_BORDER_FOCUS)
+                img_entry.grid(row=0, column=2, padx=5, sticky="ew")
                 
-                btn = tk.Button(row_frame, text="瀏覽", command=lambda p=img_var: self._browse_image_for_slide(p))
-                btn.grid(row=0, column=3, padx=2)
+                def on_ie_focus_in(e, widget=img_entry): widget.config(highlightbackground=self.COLOR_BORDER_FOCUS)
+                def on_ie_focus_out(e, widget=img_entry): widget.config(highlightbackground=self.COLOR_BORDER)
+                img_entry.bind("<FocusIn>", on_ie_focus_in)
+                img_entry.bind("<FocusOut>", on_ie_focus_out)
+                
+                btn = self.create_button(row_frame, "瀏覽", lambda p=img_var: self._browse_image_for_slide(p), btn_type="secondary")
+                btn.grid(row=0, column=3, padx=5)
+                
+                row_frame.grid_columnconfigure(2, weight=1)
                 
                 self.slide_image_map[slide_id] = img_var
                 row_index += 1
@@ -469,8 +762,8 @@ class App(tk.Tk):
             self.video_generation_frame.pack(fill="both", expand=True, pady=10)
         
         # Pack common elements AFTER mode frame
-        self.run_button.pack(pady=10, fill="x", padx=10)
-        self.progress_label.pack(pady=5, padx=10)
+        self.run_button.pack(pady=10, fill="x", padx=10, side="bottom")
+        self.progress_label.pack(pady=5, padx=10, anchor="w")
         self.console.pack(pady=5, padx=10, fill="both", expand=True)
 
     def _start_background_detection(self):
@@ -954,6 +1247,18 @@ class App(tk.Tk):
         self.run_button.config(state="disabled")
         self.progress_label.config(text="正在執行...請等待...")
         
+        # Clear previous console output
+        self.console.config(state="normal")
+        self.console.delete("1.0", tk.END)
+        self.console.config(state="disabled")
+        
+        # Reset auditor dashboard
+        for k in ["phase1", "phase2", "phase3", "phase4", "phase5"]:
+            self._set_phase_status(k, "⚪ 待命 (Idle)", "#70757a")
+            self.phase_rework_counts[k] = 0
+            self.phase_rework_labels[k][0].set("0")
+            self.phase_rework_labels[k][1].config(fg="#202124")
+        
         def run_process():
             try:
                 process = subprocess.Popen(
@@ -990,6 +1295,56 @@ class App(tk.Tk):
         self.console.insert(tk.END, message)
         self.console.see(tk.END)
         self.console.config(state="disabled")
+        
+        # Parse message to update quality auditing dashboard in real time
+        self._update_auditor_dashboard(message)
+
+    def _set_phase_status(self, phase_key: str, status_text: str, color: str):
+        self.phase_status_vars[phase_key].set(status_text)
+        self.phase_status_labels[phase_key].config(fg=color)
+
+    def _update_auditor_dashboard(self, message: str):
+        # Clean ANSI codes
+        clean_msg = re.sub(r'\x1b\[[0-9;]*[mK]', '', message)
+        
+        # 1. Match Phase transitions
+        if "Phase 1: Analysis" in clean_msg:
+            self._set_phase_status("phase1", "🔄 審查與分析中...", "#ff9800")
+        elif "Phase 2: Planning" in clean_msg:
+            self._set_phase_status("phase1", "✅ 審查通過 (OK)", "#4caf50")
+            self._set_phase_status("phase2", "🔄 審查與規劃中...", "#ff9800")
+        elif "Phase 3: Deck Generation" in clean_msg:
+            self._set_phase_status("phase2", "✅ 審查通過 (OK)", "#4caf50")
+            self._set_phase_status("phase3", "🔄 簡報生成與排版中...", "#ff9800")
+        elif "Phase 4 & 5" in clean_msg or "Parallel Memo & SVG" in clean_msg:
+            self._set_phase_status("phase3", "✅ 審查通過 (OK)", "#4caf50")
+            self._set_phase_status("phase4", "🔄 備忘稿寫作中...", "#ff9800")
+            self._set_phase_status("phase5", "🔄 視覺素材設計中...", "#ff9800")
+        elif "Phase 6: Finalizing" in clean_msg:
+            for k in ["phase4", "phase5"]:
+                current = self.phase_status_vars[k].get()
+                if "🔄" in current or "❌" in current or "待命" in current:
+                    self._set_phase_status(k, "✅ 審查通過 (OK)", "#4caf50")
+            
+        # 2. Match QA PASS / REWORK / FAILED tags
+        active_phase = None
+        for k in ["phase1", "phase2", "phase3", "phase4", "phase5"]:
+            current_status = self.phase_status_vars[k].get()
+            if "🔄" in current_status or "❌" in current_status:
+                active_phase = k
+                # If in Phase 4 & 5 parallel run, determine which sub-phase based on log text
+                if active_phase == "phase4" and "SVG" in clean_msg:
+                    active_phase = "phase5"
+                break
+        
+        if active_phase:
+            if "[QA PERFECT PASS]" in clean_msg or "[QA ACCEPTABLE PASS]" in clean_msg or "[QA ACCEPTABLE FALLBACK]" in clean_msg:
+                self._set_phase_status(active_phase, "✅ 審查通過 (OK)", "#4caf50")
+            elif "[QA REWORK REQUIRED]" in clean_msg or "[QA FAILED]" in clean_msg:
+                self.phase_rework_counts[active_phase] += 1
+                self.phase_rework_labels[active_phase][0].set(str(self.phase_rework_counts[active_phase]))
+                self.phase_rework_labels[active_phase][1].config(fg="#f44336") # Highlight rework count in red
+                self._set_phase_status(active_phase, f"❌ 駁回重製 (退回第 {self.phase_rework_counts[active_phase]} 次)", "#f44336")
 
 
 # Main entry point
