@@ -13,6 +13,7 @@ because Windows command line has a 8191 character limit.
 """
 import subprocess
 import os
+import shutil
 import time
 import re
 import logging
@@ -56,6 +57,37 @@ class AntigravityAdapter(AgentInterface):
         self.command_override = config.get("agent_config", {}).get("command_override")
         self._use_pywinpty = True  # Enable by default
         
+        # Resolve command path to absolute path for winpty reliability
+        cmd = self.command_override or self.COMMAND
+        self.resolved_command = cmd
+        found_cmd = shutil.which(cmd)
+        if found_cmd:
+            self.resolved_command = found_cmd
+        else:
+            if os.name == 'nt':
+                local_appdata = os.environ.get('LOCALAPPDATA', '')
+                if local_appdata:
+                    agy_paths = [
+                        os.path.join(local_appdata, 'agy', 'bin', 'agy.exe'),
+                        os.path.join(local_appdata, 'agy', 'bin', 'agy.EXE'),
+                    ]
+                    for agy_path in agy_paths:
+                        if os.path.exists(agy_path):
+                            self.resolved_command = agy_path
+                            break
+            else:
+                candidates = [
+                    "/usr/local/bin/agy",
+                    "/opt/homebrew/bin/agy",
+                    os.path.expanduser("~/.local/bin/agy"),
+                ]
+                for candidate in candidates:
+                    if os.path.exists(candidate):
+                        self.resolved_command = candidate
+                        break
+        
+        logger.info(f"[Antigravity] Resolved command to: '{self.resolved_command}'")
+        
         # Thread-safe cooldown tracking
         self._last_call_time = 0
         self._last_output_size = 0
@@ -94,7 +126,7 @@ class AntigravityAdapter(AgentInterface):
         
         Returns (cmd_string, temp_file_path)
         """
-        cmd_exe = self.command_override or self.COMMAND
+        cmd_exe = self.resolved_command
         
         # Create temp file with prompt
         temp_dir = os.path.join(os.getcwd(), "temp")
@@ -108,7 +140,7 @@ class AntigravityAdapter(AgentInterface):
         
         # Build command to read from file
         # Use type command to read file content as prompt
-        cmd_string = f'{cmd_exe} -p "@type {temp_file}" --dangerously-skip-permissions --print-timeout 600s'
+        cmd_string = f'"{cmd_exe}" -p "@type {temp_file}" --dangerously-skip-permissions --print-timeout 600s'
         
         return cmd_string, temp_file
     
@@ -117,7 +149,7 @@ class AntigravityAdapter(AgentInterface):
         
         Returns (cmd_string, temp_file_path)
         """
-        cmd_exe = self.command_override or self.COMMAND
+        cmd_exe = self.resolved_command
         
         # Escape special characters in prompt for shell
         escaped_prompt = prompt.replace('"', '\\"')
