@@ -12,7 +12,9 @@ dependencies = [
     "pillow>=10.0.0",
     "edge-tts>=6.1.12",
     "pywinpty>=3.0.0; sys_platform == 'win32'",  # Required on Windows for antigravity CLI TTY support
+    "pypdf>=4.0.0",
 ]
+
 
 # CLI Entry Points
 [project.scripts]

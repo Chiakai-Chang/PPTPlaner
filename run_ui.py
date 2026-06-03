@@ -224,14 +224,45 @@ class App(tk.Tk):
         self.initial_model_combobox = ttk.Combobox(model_selection_frame, textvariable=self.initial_gemini_model_var, values=self.available_gemini_models, state="readonly", width=30)
         self.initial_model_combobox.pack(side="left")
 
-        # --- File Selection (Moved Below Agent) ---
-        tk.Label(self.new_generation_controls_frame, text="選擇要分析的檔案:").grid(row=2, column=0, sticky="w", pady=2)
-        tk.Entry(self.new_generation_controls_frame, textvariable=self.source_file_path, width=80).grid(row=3, column=0, padx=(0, 5), columnspan=2, sticky="ew")
-        tk.Button(self.new_generation_controls_frame, text="瀏覽...", command=self.browse_files).grid(row=3, column=2)
+        # --- PDF/Document Parsing Options Frame ---
+        self.pdf_parser_map = {
+            "線上轉檔 (推薦免安裝 - 最輕鬆)": "online",
+            "輕量化本地提取 (pypdf - 僅限文字PDF)": "pypdf",
+            "高精度本地解析 (MinerU - 支援多格式/CPU/GPU)": "mineru",
+            "本地 Marker 解析 (僅限PDF/極耗GPU)": "marker"
+        }
+        self.pdf_frame = tk.LabelFrame(self.new_generation_controls_frame, text="PDF/多格式文件解析設定 (當選擇 PDF/Word 檔案時生效)", font=("Arial", 10, "bold"), padx=10, pady=5)
+        self.pdf_frame.grid(row=2, column=0, columnspan=3, sticky="ew", pady=10)
+        
+        tk.Label(self.pdf_frame, text="選擇解析方式:").grid(row=0, column=0, sticky="w", pady=2)
+        
+        self.pdf_parser_combobox = ttk.Combobox(
+            self.pdf_frame, 
+            values=list(self.pdf_parser_map.keys()), 
+            state="readonly", 
+            width=50
+        )
+        self.pdf_parser_combobox.set("線上轉檔 (推薦免安裝 - 最輕鬆)")
+        self.pdf_parser_combobox.grid(row=0, column=1, sticky="w", padx=10, pady=2)
+        self.pdf_parser_combobox.bind("<<ComboboxSelected>>", self._on_pdf_parser_changed)
+        
+        self.pdf_desc_label = tk.Label(self.pdf_frame, text="", justify="left", anchor="w", wraplength=700, font=("Arial", 9))
+        self.pdf_desc_label.grid(row=1, column=0, columnspan=2, sticky="w", pady=5)
+        
+        self.pdf_link_label = tk.Label(self.pdf_frame, text="🔗 前往 MinerU 線上轉檔平台", fg="blue", cursor="hand2", font=("Arial", 9, "underline"))
+        self.pdf_link_label.grid(row=2, column=0, columnspan=2, sticky="w", pady=(0, 5))
+        self.pdf_link_label.bind("<Button-1>", lambda e: self.open_link("https://mineru.net/OpenSourceTools/Extractor"))
+        
+        self._on_pdf_parser_changed()
+
+        # --- File Selection (Moved Below Parser Settings) ---
+        tk.Label(self.new_generation_controls_frame, text="選擇要分析的檔案:").grid(row=3, column=0, sticky="w", pady=2)
+        tk.Entry(self.new_generation_controls_frame, textvariable=self.source_file_path, width=80).grid(row=4, column=0, padx=(0, 5), columnspan=2, sticky="ew")
+        tk.Button(self.new_generation_controls_frame, text="瀏覽...", command=self.browse_files).grid(row=4, column=2)
         
         # --- Reworks Frame ---
         rework_frame = tk.Frame(self.new_generation_controls_frame)
-        rework_frame.grid(row=4, column=0, columnspan=3, sticky="w", pady=5)
+        rework_frame.grid(row=5, column=0, columnspan=3, sticky="w", pady=5)
         tk.Label(rework_frame, text="最大修正次數 (0-10):").pack(side="left", padx=(0, 10))
         
         tk.Label(rework_frame, text="分析:").pack(side="left", padx=(0, 5))
@@ -256,19 +287,20 @@ class App(tk.Tk):
 
         # --- SVG Generation Checkbox ---
         options_frame = tk.Frame(self.new_generation_controls_frame)
-        options_frame.grid(row=5, column=0, columnspan=3, sticky="w", pady=5)
+        options_frame.grid(row=6, column=0, columnspan=3, sticky="w", pady=5)
         self.svg_checkbox = tk.Checkbutton(options_frame, text="生成 SVG (實驗性功能，會增加 token 用量)", variable=self.generate_svg)
         self.svg_checkbox.pack(side="left")
         
         # --- Custom Instructions ---
         instr_frame = tk.Frame(self.new_generation_controls_frame)
-        instr_frame.grid(row=6, column=0, columnspan=3, sticky="ew", pady=5)
+        instr_frame.grid(row=7, column=0, columnspan=3, sticky="ew", pady=5)
         tk.Label(instr_frame, text="自訂指令 (選填):").grid(row=0, column=0, sticky="w")
         self.custom_instruction_text = scrolledtext.ScrolledText(instr_frame, height=4, state="normal", bg="#f5f5f5")
         self.custom_instruction_text.grid(row=1, column=0, columnspan=2, sticky="ew", pady=2)
         instr_frame.grid_columnconfigure(0, weight=1)
 
         self.new_generation_controls_frame.grid_columnconfigure(0, weight=1)
+
 
         # Common elements (will be packed in toggle_mode_inputs)
         self.run_button = tk.Button(main_frame, text="開始生成", command=self.run_orchestration, font=("Arial", 12, "bold"), bg="#c0d8f0")
@@ -277,8 +309,6 @@ class App(tk.Tk):
 
         # Initial toggle to set correct visibility
         self.toggle_mode_inputs()
-
-
     def _on_mousewheel(self, event):
         self.image_canvas.yview_scroll(int(-1*(event.delta/120)), "units")
 
@@ -286,8 +316,69 @@ class App(tk.Tk):
         webbrowser.open(url)
 
     def browse_files(self):
-        filepath = filedialog.askopenfilename(filetypes=[("All Files", "*.*"), ("PDF", "*.pdf"), ("Word", "*.docx"), ("Text", "*.txt"), ("Markdown", "*.md"), ("HTML", "*.html")])
+        # Check selected parser in combobox
+        parser_key = self.pdf_parser_combobox.get()
+        internal_parser = self.pdf_parser_map.get(parser_key, "online")
+        
+        if internal_parser == "online":
+            # Restrict to plain text formats
+            filetypes = [
+                ("Text/Markdown Files", "*.txt;*.md;*.html;*.htm"),
+                ("Markdown", "*.md"),
+                ("Text", "*.txt"),
+                ("HTML", "*.html"),
+                ("All Files", "*.*")
+            ]
+        else:
+            # Allow all files including PDF, DOCX, PPTX, XLSX
+            filetypes = [
+                ("All Supported Files", "*.txt;*.md;*.html;*.htm;*.pdf;*.docx;*.pptx;*.xlsx"),
+                ("PDF", "*.pdf"),
+                ("Word/PPT/Excel", "*.docx;*.pptx;*.xlsx"),
+                ("Text/Markdown", "*.txt;*.md;*.html"),
+                ("All Files", "*.*")
+            ]
+            
+        filepath = filedialog.askopenfilename(filetypes=filetypes)
         if filepath: self.source_file_path.set(os.path.abspath(filepath))
+
+
+    def _on_pdf_parser_changed(self, *args):
+        parser_key = self.pdf_parser_combobox.get()
+        internal_parser = self.pdf_parser_map.get(parser_key, "online")
+        
+        descriptions = {
+            "online": (
+                "🌐 推薦免安裝方案：完全不需要在您的電腦安裝任何機器學習套件！\n\n"
+                "💡 做法：請點擊下方連結前往 MinerU 線上轉換平台，將您的 PDF/Office 檔案上傳轉檔，"
+                "下載取得 Markdown (.md) 檔案後，在上方重新點選該 .md 檔案即可開始生成。"
+            ),
+            "pypdf": (
+                "⚡ 特點：提取速度極快（毫秒級），套件僅約 1.5MB，完全在本地安全執行，不需額外權重。\n\n"
+                "⚠️ 限制：僅適用於數位直接生成的 PDF（非掃描圖片檔）。不支援公式 Latex 轉換，"
+                "多欄位或複雜表格的提取排版可能會錯亂。\n"
+                "⚙️ 需求：專案啟動時會自動在虛擬環境中安裝 `pypdf`（已整合於 requirements 中）。"
+            ),
+            "mineru": (
+                "🧠 特點：最強大的本地開源多格式解析引擎。支援公式 Latex 轉換、表格轉 HTML、多欄排版與 OCR 識別，"
+                "原生支援 PDF/DOCX/PPTX/XLSX。\n\n"
+                "⚠️ 限制：需要在本地下載約 20GB 模型。CPU 模式可用，但強烈建議電腦記憶體大於 16GB。\n"
+                "⚙️ 需求：需在虛擬環境手動執行 `pip install mineru[all]` 並配置環境。"
+            ),
+            "marker": (
+                "🔬 特點：專門針對 PDF 轉 Markdown 設計的高精度引擎，對科學論文、排版與公式 Latex 支援佳。\n\n"
+                "⚠️ 限制：在 CPU 下執行非常慢（單頁需 10-20 秒），必須配合 Nvidia/Apple GPU，且商用授權有限制。\n"
+                "⚙️ 需求：需手動執行 `pip install marker-pdf` 並配置 PyTorch 和權重下載。"
+            )
+        }
+        
+        self.pdf_desc_label.config(text=descriptions.get(internal_parser, ""))
+        
+        # Show link only for online mode
+        if internal_parser == "online":
+            self.pdf_link_label.grid(row=2, column=0, columnspan=2, sticky="w", pady=(0, 5))
+        else:
+            self.pdf_link_label.grid_forget()
 
     def browse_resume_output_dir(self):
         dirpath = filedialog.askdirectory()
@@ -683,7 +774,61 @@ class App(tk.Tk):
             
             # Prepare command
             command = [sys.executable, "scripts/orchestrate.py"]
-            command.extend(["--source", self.source_file_path.get()])
+            source_file = self.source_file_path.get().strip()
+            command.extend(["--source", source_file])
+            
+            # PDF/Document parser parameter handling
+            ext = os.path.splitext(source_file)[1].lower()
+            if ext in [".pdf", ".docx", ".pptx", ".xlsx"]:
+                parser_key = self.pdf_parser_combobox.get()
+                internal_parser = self.pdf_parser_map.get(parser_key, "online")
+                if internal_parser == "online":
+                    messagebox.showinfo(
+                        "線上轉檔說明", 
+                        "您選擇了「線上轉檔」模式。\n\n"
+                        "請按照以下步驟操作：\n"
+                        "1. 點擊介面中的連結，或前往瀏覽器開啟：\n   https://mineru.net/OpenSourceTools/Extractor\n"
+                        "2. 上傳您的檔案進行轉檔，完成後下載 Markdown (.md) 檔案。\n"
+                        "3. 點擊「瀏覽」重新選擇該轉檔後的 .md 檔案，再點擊「開始生成」。"
+                    )
+                    return
+                else:
+                    # Check for missing dependencies
+                    missing_dep = None
+                    install_command = ""
+                    
+                    if internal_parser == "pypdf":
+                        try:
+                            import pypdf
+                        except ImportError:
+                            missing_dep = "pypdf"
+                            install_command = "pip install pypdf"
+                    elif internal_parser == "mineru":
+                        import shutil
+                        if not shutil.which("mineru"):
+                            missing_dep = "MinerU"
+                            install_command = "pip install mineru[all]"
+                    elif internal_parser == "marker":
+                        import shutil
+                        if not shutil.which("marker_single"):
+                            missing_dep = "Marker"
+                            install_command = "pip install marker-pdf"
+                    
+                    if missing_dep:
+                        messagebox.showwarning(
+                            "缺少依賴套件", 
+                            f"您選擇的解析方式【{parser_key}】需要安裝額外的系統依賴，但系統在您的環境中找不到該套件。\n\n"
+                            "建議解決方案：\n"
+                            "1. 🌐 使用免安裝方案：\n"
+                            "   點擊連結前往線上平台轉檔為 Markdown 後下載回來使用（最推薦）：\n"
+                            "   https://mineru.net/OpenSourceTools/Extractor\n\n"
+                            "2. 💻 安裝本地套件（依照您的電腦硬體需求）：\n"
+                            "   請在您的 Python 虛擬環境中執行以下安裝指令：\n"
+                            f"   {install_command}"
+                        )
+                        return
+                    
+                    command.extend(["--pdf-parser", internal_parser])
             
             # Add optional arguments
             m_title = self.input_doc_title.get().strip()

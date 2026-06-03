@@ -740,6 +740,7 @@ def main():
     parser.add_argument("--slide-svg-reworks", type=int, default=3)
     parser.add_argument("--conceptual-svg-reworks", type=int, default=3)
     parser.add_argument("--agent-retries", dest="agent_execution_retries", type=int, default=3)
+    parser.add_argument("--pdf-parser", choices=["pypdf", "mineru", "marker"], help="Parser for PDF/Office files")
     args = parser.parse_args()
 
     init_logger(ROOT)
@@ -749,9 +750,81 @@ def main():
     source_path = Path(args.source)
     if not source_path.exists(): print_error(f"Source file not found: {source_path}")
 
+    # Preprocess non-text files if a parser is specified
+    suffix = source_path.suffix.lower()
+    if suffix in [".pdf", ".docx", ".pptx", ".xlsx"]:
+        if not args.pdf_parser:
+            print_error(f"偵測到非文字檔案 {source_path.name}，但未指定 --pdf-parser！\n請在 UI 或指令行中選擇 pypdf、mineru 或 marker 進行解析。")
+        
+        print_info(f"偵測到非文字檔案: {source_path.name}，正在使用 {args.pdf_parser} 進行本地解析...")
+        
+        # Determine output directory to store temp files
+        output_dir = ROOT / "output" / "temp_conversion"
+        output_dir.mkdir(parents=True, exist_ok=True)
+        
+        temp_md_path = output_dir / f"{source_path.stem}_converted.md"
+        
+        try:
+            if args.pdf_parser == "pypdf":
+                if suffix != ".pdf":
+                    print_error(f"pypdf 僅支援 PDF 檔案，無法解析 {suffix} 檔案。")
+                import pypdf
+                reader = pypdf.PdfReader(source_path)
+                text_parts = []
+                for i, page in enumerate(reader.pages):
+                    text = page.extract_text() or ""
+                    text_parts.append(f"<!-- Page {i+1} -->\n{text}")
+                converted_text = "\n\n".join(text_parts)
+                temp_md_path.write_text(converted_text, encoding="utf-8")
+                
+            elif args.pdf_parser == "mineru":
+                import subprocess
+                temp_out = output_dir / "mineru_out"
+                temp_out.mkdir(parents=True, exist_ok=True)
+                
+                print_info("執行 MinerU 轉換中 (CPU 模式)...")
+                # Using shell=True for compatibility with Windows PATH commands
+                cmd = ["mineru", "-p", str(source_path), "-o", str(temp_out), "-b", "pipeline"]
+                res = subprocess.run(cmd, capture_output=True, text=True, shell=True)
+                if res.returncode != 0:
+                    print_error(f"MinerU 轉換失敗！\n錯誤訊息：{res.stderr or res.stdout}\n請確保已在環境中執行: pip install mineru[all]")
+                
+                # Find generated markdown
+                md_files = list(temp_out.glob("**/*.md"))
+                if not md_files:
+                    print_error("MinerU 執行完成，但找不到輸出的 Markdown 檔案。")
+                
+                converted_text = md_files[0].read_text(encoding="utf-8")
+                temp_md_path.write_text(converted_text, encoding="utf-8")
+                
+            elif args.pdf_parser == "marker":
+                import subprocess
+                temp_out = output_dir / "marker_out"
+                temp_out.mkdir(parents=True, exist_ok=True)
+                
+                print_info("執行 Marker 轉換中...")
+                cmd = ["marker_single", str(source_path), "--output_dir", str(temp_out)]
+                res = subprocess.run(cmd, capture_output=True, text=True, shell=True)
+                if res.returncode != 0:
+                    print_error(f"Marker 轉換失敗！\n錯誤訊息：{res.stderr or res.stdout}\n請確保已在環境中執行: pip install marker-pdf")
+                
+                md_files = list(temp_out.glob("**/*.md"))
+                if not md_files:
+                    print_error("Marker 執行完成，但找不到輸出的 Markdown 檔案。")
+                
+                converted_text = md_files[0].read_text(encoding="utf-8")
+                temp_md_path.write_text(converted_text, encoding="utf-8")
+            
+            print_info(f"檔案轉換成功！已將內容輸出至暫存檔: {temp_md_path}")
+            source_path = temp_md_path
+            
+        except Exception as e:
+            print_error(f"解析檔案時發生未預期的錯誤: {e}")
+
     # Phase 1: Analysis
     print_header("Phase 1: Analysis & Planning")
     analysis_vars = {"source_file_path": str(source_path), "custom_instruction": args.custom_instruction or "", "manual_title": args.manual_title or "", "manual_author": args.manual_author or "", "manual_url": args.manual_url or ""}
+
     
     analysis_data, acceptable_analysis, analysis_feedback_history = {}, {}, []
     for attempt in range(args.analysis_reworks + 1):
