@@ -14,11 +14,9 @@
 
 以下是新版 GUI 的運行截圖與品質審查狀態對比，展示了品質審查看板在不同階段的表現：
 
-````carousel
-![品質審查中且需要修正的畫面](demo/demov4.png)
-<!-- slide -->
-![品質審查完全通過並獲取滿分的畫面](demo/demov4_perfect.png)
-````
+| 🔍 審查中並提供修正回饋 (Rework State) | 🏆 審查通過並獲取滿分 (Perfect Pass) |
+| :---: | :---: |
+| ![品質審查中且需要修正的畫面](demo/demov4.png) | ![品質審查完全通過並獲取滿分的畫面](demo/demov4_perfect.png) |
 
 ### 📝 品質審查真實案例 (Real-world Audit Log Example)
 
