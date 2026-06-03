@@ -877,6 +877,15 @@ class App(tk.Tk):
         # CLI agents (antigravity, claude) don't need model selector via -p flag
         is_cli_agent = agent_name in ["antigravity", "claude"]
         
+        # Show/hide model selection row based on agent type
+        if is_cli_agent:
+            print("[UI] Hiding model selector for CLI agent")
+            self.model_select_row.pack_forget()
+            return  # Skip model fetching for CLI agents
+        else:
+            print("[UI] Showing model selector for API agent")
+            self.model_select_row.pack(fill="x", pady=4)
+        
         # Get models - use timeout to avoid blocking
         print(f"[UI] Fetching available models for {agent_name}...")
         try:
