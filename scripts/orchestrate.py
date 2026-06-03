@@ -727,7 +727,8 @@ def main():
     parser.add_argument("--manual-title")
     parser.add_argument("--manual-author")
     parser.add_argument("--manual-url")
-    parser.add_argument("--no-svg", action="store_true")
+    parser.add_argument("--no-svg", action="store_true", help="Deprecated (SVG is now disabled by default)")
+    parser.add_argument("--enable-svg", action="store_true", help="Enable visual SVG generation (default: disabled)")
     parser.add_argument("--custom-instruction")
     parser.add_argument("--plan-from-slides")
     parser.add_argument("--gemini-model")
@@ -1056,7 +1057,7 @@ def main():
             p_num, status = future.result()
             print_success(f"Memo Page {p_num}: {status}")
 
-    if not args.no_svg:
+    if getattr(args, "enable_svg", False):
         with ThreadPoolExecutor(max_workers=3) as executor:
             svg_futures = [executor.submit(process_svg_page, i, s, source_path, slides_dir, notes_dir, glossary_text, cfg, args) for i, s in enumerate(last_deck_content)]
             for future in as_completed(svg_futures):
@@ -1065,9 +1066,10 @@ def main():
     
     # Add review for Phase 4 & 5
     report_add_step("Memo generation complete", f"Pages: {len(last_deck_content)}")
-    report_add_step("SVG generation complete", f"Pages: {len(last_deck_content)}")
+    if getattr(args, "enable_svg", False):
+        report_add_step("SVG generation complete", f"Pages: {len(last_deck_content)}")
+        report_add_review("Visual Quality", 7, "SVG diagrams created for complex content")
     report_add_review("Memo Quality", 8, "Speaker notes generated for each slide")
-    report_add_review("Visual Quality", 7, "SVG diagrams created for complex content")
     report_complete_phase()
 
     # Finalize

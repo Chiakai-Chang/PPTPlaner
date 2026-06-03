@@ -513,12 +513,7 @@ class App(tk.Tk):
         self.slide_reworks_spinbox = add_spinbox(rework_grid, "簡報", 0, 2, 5)
         self.memo_reworks_spinbox = add_spinbox(rework_grid, "講稿", 0, 3, 3)
 
-        options_row = tk.Frame(self.card_settings, bg=self.COLOR_BG_CARD)
-        options_row.pack(fill="x", padx=10, pady=6)
-        self.svg_checkbox = tk.Checkbutton(options_row, text="生成視覺 SVG 素材 (實驗性功能，會增加 token 用量)",
-                                           variable=self.generate_svg, font=self.FONT_BODY, fg=self.COLOR_TEXT_PRIMARY,
-                                           bg=self.COLOR_BG_CARD, activebackground=self.COLOR_BG_CARD, selectcolor="#ffffff")
-        self.svg_checkbox.pack(side="left")
+
         
         instr_label_row = tk.Frame(self.card_settings, bg=self.COLOR_BG_CARD)
         instr_label_row.pack(fill="x", padx=10, pady=(6, 2))
@@ -566,8 +561,7 @@ class App(tk.Tk):
             ("phase1", "1. 文獻分析審查 (Analysis)"),
             ("phase2", "2. 教學架構審查 (Planning)"),
             ("phase3", "3. 簡報排版審查 (Slide Gen)"),
-            ("phase4", "4. 備忘講稿審查 (Speaker Notes)"),
-            ("phase5", "5. 視覺素材審查 (Visual SVGs)")
+            ("phase4", "4. 備忘講稿審查 (Speaker Notes)")
         ]
         
         for idx, (key, name) in enumerate(phases_info):
@@ -1315,7 +1309,7 @@ class App(tk.Tk):
         self.console.config(state="disabled")
         
         # Reset auditor dashboard
-        for k in ["phase1", "phase2", "phase3", "phase4", "phase5"]:
+        for k in ["phase1", "phase2", "phase3", "phase4"]:
             self._set_phase_status(k, "⚪ 待命 (Idle)", "#70757a")
             self.phase_rework_counts[k] = 0
             self.phase_rework_labels[k][0].set("0")
@@ -1323,6 +1317,10 @@ class App(tk.Tk):
         
         def run_process():
             try:
+                # Set PYTHONUNBUFFERED=1 to ensure the child process flushes stdout/stderr immediately
+                env = os.environ.copy()
+                env["PYTHONUNBUFFERED"] = "1"
+                
                 process = subprocess.Popen(
                     command,
                     stdout=subprocess.PIPE,
@@ -1331,10 +1329,15 @@ class App(tk.Tk):
                     encoding='utf-8',
                     errors='replace',
                     bufsize=1,
-                    universal_newlines=True
+                    universal_newlines=True,
+                    env=env
                 )
                 
-                for line in process.stdout:
+                # Real-time readline to avoid internal read-ahead buffering by file iterator
+                while True:
+                    line = process.stdout.readline()
+                    if not line:
+                        break
                     self.after(0, self.log_message, line)
                 
                 process.wait()
@@ -1378,25 +1381,20 @@ class App(tk.Tk):
         elif "Phase 3: Deck Generation" in clean_msg:
             self._set_phase_status("phase2", "✅ 審查通過 (OK)", "#4caf50")
             self._set_phase_status("phase3", "🔄 簡報生成與排版中...", "#ff9800")
-        elif "Phase 4 & 5" in clean_msg or "Parallel Memo & SVG" in clean_msg:
+        elif "Phase 4 & 5" in clean_msg or "Parallel Memo" in clean_msg or "Phase 4: Memo" in clean_msg:
             self._set_phase_status("phase3", "✅ 審查通過 (OK)", "#4caf50")
             self._set_phase_status("phase4", "🔄 備忘稿寫作中...", "#ff9800")
-            self._set_phase_status("phase5", "🔄 視覺素材設計中...", "#ff9800")
         elif "Phase 6: Finalizing" in clean_msg:
-            for k in ["phase4", "phase5"]:
-                current = self.phase_status_vars[k].get()
-                if "🔄" in current or "❌" in current or "待命" in current:
-                    self._set_phase_status(k, "✅ 審查通過 (OK)", "#4caf50")
+            current = self.phase_status_vars["phase4"].get()
+            if "🔄" in current or "❌" in current or "待命" in current:
+                self._set_phase_status("phase4", "✅ 審查通過 (OK)", "#4caf50")
             
         # 2. Match QA PASS / REWORK / FAILED tags
         active_phase = None
-        for k in ["phase1", "phase2", "phase3", "phase4", "phase5"]:
+        for k in ["phase1", "phase2", "phase3", "phase4"]:
             current_status = self.phase_status_vars[k].get()
             if "🔄" in current_status or "❌" in current_status:
                 active_phase = k
-                # If in Phase 4 & 5 parallel run, determine which sub-phase based on log text
-                if active_phase == "phase4" and "SVG" in clean_msg:
-                    active_phase = "phase5"
                 break
         
         if active_phase:
