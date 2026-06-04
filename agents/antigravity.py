@@ -144,37 +144,28 @@ class AntigravityAdapter(AgentInterface):
         
         return cmd_string, temp_file
     
-    def _build_command_inline(self, prompt: str, options: Optional[Dict[str, Any]] = None) -> tuple[str, str]:
+    def _build_command_inline(self, prompt: str, options: Optional[Dict[str, Any]] = None) -> tuple[List[str], str]:
         """Build command with inline prompt for small prompts.
         
-        Returns (cmd_string, temp_file_path)
+        Returns (cmd_args, temp_file_path)
         """
         cmd_exe = self.resolved_command
         
-        # Escape special characters in prompt for shell
-        escaped_prompt = prompt.replace('"', '\\"')
-        parts = [f'"{cmd_exe}"', "-p", f'"{escaped_prompt}"']
-        
-        # Auto-approve tool permissions
-        parts.append("--dangerously-skip-permissions")
-        
-        # Add timeout
-        parts.append("--print-timeout 600s")
+        cmd_args = [cmd_exe, "-p", prompt, "--dangerously-skip-permissions", "--print-timeout", "600s"]
         
         # Add workspace directory if specified
         workspace = options.get("workspace") if options else None
         if workspace:
-            parts.extend(["--add-dir", workspace])
+            cmd_args.extend(["--add-dir", workspace])
         
-        cmd_string = " ".join(parts)
-        return cmd_string, None
+        return cmd_args, None
     
-    def _build_command(self, prompt: str, options: Optional[Dict[str, Any]] = None) -> tuple[str, str]:
-        """Build command string for shell execution.
+    def _build_command(self, prompt: str, options: Optional[Dict[str, Any]] = None) -> tuple[List[str], str]:
+        """Build command list for execution.
         
         Uses temp file for large prompts to avoid Windows command line limit.
         
-        Returns (cmd_string, temp_file_path)
+        Returns (cmd_args, temp_file_path)
         """
         # For large prompts, use temp file
         if len(prompt) > WINDOWS_CMD_LIMIT:
@@ -208,13 +199,13 @@ class AntigravityAdapter(AgentInterface):
         
         return text.strip()
     
-    def _execute_with_pywinpty(self, cmd_string: str) -> str:
+    def _execute_with_pywinpty(self, cmd_args: List[str]) -> str:
         """Execute command using pywinpty for TTY support."""
         from winpty import PtyProcess
         
         print(f"  🔄 [Antigravity] Executing command... (may take 1-10 minutes)", flush=True)
         
-        proc = PtyProcess.spawn(cmd_string)
+        proc = PtyProcess.spawn(cmd_args)
         
         full_output = ""
         timeout = 600  # 10 minutes for local models
@@ -248,15 +239,15 @@ class AntigravityAdapter(AgentInterface):
         print(f"  ✅ [Antigravity] Received {len(full_output)} chars", flush=True)
         return full_output
     
-    def _execute_with_subprocess(self, cmd_string: str) -> str:
+    def _execute_with_subprocess(self, cmd_args: List[str]) -> str:
         """Fallback to subprocess if pywinpty not available."""
         process = subprocess.Popen(
-            cmd_string,
+            cmd_args,
             stdout=subprocess.PIPE,
             stderr=subprocess.STDOUT,
             text=True,
             encoding="utf-8",
-            shell=True,
+            shell=False,
             bufsize=1
         )
         
@@ -267,7 +258,7 @@ class AntigravityAdapter(AgentInterface):
         process.wait()
         return full_output
 
-    def _execute_with_unix_pty(self, cmd_string: str) -> str:
+    def _execute_with_unix_pty(self, cmd_args: List[str]) -> str:
         """Execute command using native pty on macOS/Linux for TTY support."""
         import pty
         import os
@@ -278,11 +269,11 @@ class AntigravityAdapter(AgentInterface):
         master_fd, slave_fd = pty.openpty()
         try:
             process = subprocess.Popen(
-                cmd_string,
+                cmd_args,
                 stdin=slave_fd,
                 stdout=slave_fd,
                 stderr=slave_fd,
-                shell=True,
+                shell=False,
                 close_fds=True,
             )
         finally:
@@ -362,9 +353,9 @@ class AntigravityAdapter(AgentInterface):
             try:
                 logger.info(f"Calling {self.NAME} for {mode}... (Attempt {attempt + 1}/{max_retries})")
                 
-                # Build command string (uses temp file for large prompts)
-                cmd_string, temp_file = self._build_command(prompt, options)
-                logger.debug(f"Command: {cmd_string[:100]}...")
+                # Build command list (uses temp file for large prompts)
+                cmd_args, temp_file = self._build_command(prompt, options)
+                logger.debug(f"Command args: {cmd_args}")
                 
                 if temp_file:
                     logger.debug(f"Prompt file: {temp_file} ({os.path.getsize(temp_file)} bytes)")
@@ -372,15 +363,15 @@ class AntigravityAdapter(AgentInterface):
                 # Execute using pywinpty (TTY required)
                 import sys
                 if self._use_pywinpty:
-                    raw_output = self._execute_with_pywinpty(cmd_string)
+                    raw_output = self._execute_with_pywinpty(cmd_args)
                 elif sys.platform != "win32":
                     try:
-                        raw_output = self._execute_with_unix_pty(cmd_string)
+                        raw_output = self._execute_with_unix_pty(cmd_args)
                     except Exception as e:
                         logger.warning(f"Unix PTY failed, falling back to subprocess: {e}")
-                        raw_output = self._execute_with_subprocess(cmd_string)
+                        raw_output = self._execute_with_subprocess(cmd_args)
                 else:
-                    raw_output = self._execute_with_subprocess(cmd_string)
+                    raw_output = self._execute_with_subprocess(cmd_args)
                 
                 # Clean up temp file
                 if temp_file and os.path.exists(temp_file):
